@@ -61,6 +61,7 @@ def parse_args():
                             
     # Common overrides
     parser.add_argument("--learning_rate", type=float, help="Override learning rate")
+    parser.add_argument("--num_workers", type=int, help="Override number of workers")
     parser.add_argument("--batch_size", type=int, help="Override batch size")
     parser.add_argument("--freeze", action="store_true", help="Freeze encoder")
     parser.add_argument("--epochs", type=int, help="Override number of epochs")
@@ -110,7 +111,7 @@ def parse_args():
         for name, desc in DecoderRegistry.list_available().items():
             print(f"  - {name}: {desc}")
         print("\nAvailable datasets:")
-        for name, desc in DataConfigRegistry.list_available().items():
+        for name, desc in DataRegistry.list_available().items():
             print(f"  - {name}: {desc}")
         exit(0)
     
@@ -138,6 +139,8 @@ def load_config_from_args() -> Config:
         config.training.epochs = args.epochs
     if args.freeze:
         config.model.encoder.freeze = True
+    if args.num_workers:
+        config.data.num_workers = args.num_workers
     # if args.run_id:
     #     config.run_id = args.run_id
     
