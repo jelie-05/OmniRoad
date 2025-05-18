@@ -50,12 +50,23 @@ def parse_args():
     list_group.add_argument("--list-all", action="store_true", 
                        help="List all available configurations")
     
+    # Resume training options
+    resume_group = parser.add_argument_group("Resume training options")
+    resume_group.add_argument("--resume", action="store_true", 
+                            help="Resume training from the latest checkpoint")
+    resume_group.add_argument("--resume_from", type=str,
+                            help="Resume from a specific checkpoint path")
+    resume_group.add_argument("--resume_run_id", type=str,
+                            help="Resume from the latest checkpoint of a specific run")
+                            
     # Common overrides
     parser.add_argument("--learning_rate", type=float, help="Override learning rate")
     parser.add_argument("--batch_size", type=int, help="Override batch size")
     parser.add_argument("--freeze", action="store_true", help="Freeze encoder")
     parser.add_argument("--epochs", type=int, help="Override number of epochs")
-    
+    parser.add_argument("--run_id", type=str, 
+                        help="Unique run identifier. If not provided, timestamp will be used.")
+
     args = parser.parse_args()
     
     # List available experiments if requested
@@ -127,5 +138,7 @@ def load_config_from_args() -> Config:
         config.training.epochs = args.epochs
     if args.freeze:
         config.model.encoder.freeze = True
+    # if args.run_id:
+    #     config.run_id = args.run_id
     
-    return config
+    return config, args

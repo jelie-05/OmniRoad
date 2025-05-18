@@ -13,6 +13,7 @@ ExperimentRegistry = ConfigRegistry[Config]("ExperimentRegistry")
 @dataclass
 class DinoSegmentationR2S100k(Config):
     experiment_name: str = "dino_segmentation_r2s100k"
+    # run_id: Optional[str] = None
     model: ModelConfig = field(default_factory=lambda: ModelRegistry.get("dino_segmentation")())
     training: TrainingConfig = field(
         default_factory=lambda: TrainingConfig(
@@ -34,3 +35,4 @@ class DinoSegmentationR2S100k(Config):
 
     def __pose_init__(self):
         self.model.decoder.num_classes = self.data.num_classes
+
