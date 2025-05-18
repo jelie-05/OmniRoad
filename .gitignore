@@ -2,3 +2,8 @@ __pycache__
 outputs
 train.bash
 test/
+logs/
+different_span.sh
+test_simple.sh
+test_span.sh
+train.bash
