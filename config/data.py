@@ -23,7 +23,8 @@ class R2S100KConfig(DataConfig):
     
     ## For r2s100k
     num_classes = 15
-    ignore_index = 0
+    # ignore_index = 0
+    ignore_index = 255
     label_colors_list = [
             (0, 0, 0), # BG
             (2, 79, 59), # Wet_Road_Region
