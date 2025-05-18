@@ -57,14 +57,16 @@ def get_data_loaders(
                 rank=rank,
                 shuffle=False
             )
-    else:
-        train_sampler = None
-    
+    # else:
+    #     train_sampler = None
+
+
     # Create data loaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.training.batch_size,
         sampler=train_sampler,
+        shuffle=(train_sampler is None),  # Don't shuffle if using sampler
         num_workers=config.data.num_workers,
         pin_memory=config.data.pin_memory,
         drop_last=True
@@ -76,6 +78,7 @@ def get_data_loaders(
             val_dataset,
             batch_size=config.training.batch_size,
             sampler=val_sampler,
+            shuffle=False,
             num_workers=config.data.num_workers,
             pin_memory=config.data.pin_memory,
             drop_last=False
@@ -83,10 +86,11 @@ def get_data_loaders(
     
     test_loader = None
     if test_dataset is not None:
-        test_loader = DataLoader(
+       test_loader = DataLoader(
             test_dataset,
             batch_size=config.training.batch_size,
             sampler=test_sampler,
+            shuffle=False,
             num_workers=config.data.num_workers,
             pin_memory=config.data.pin_memory,
             drop_last=False
