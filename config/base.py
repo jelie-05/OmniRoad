@@ -54,7 +54,7 @@ class DataConfig:
     dataset_name: str
     dataset_path: str
     # image_size: int = 224
-    batch_size: int = 32
+    # batch_size: int = 32
     mean: List[float] = field(default_factory=lambda: [0.485, 0.456, 0.406])
     std: List[float] = field(default_factory=lambda: [0.229, 0.224, 0.225])
     num_workers: int = 4
@@ -68,7 +68,7 @@ class Config:
     training: TrainingConfig
     data: DataConfig
     seed: int = 0
-    
+        
     @classmethod
     def from_yaml(cls, config_path: Path) -> 'Config':
         """Load configuration from YAML file."""
