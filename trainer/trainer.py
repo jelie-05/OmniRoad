@@ -1474,8 +1474,9 @@ class Trainer:
             checkpoint['current_metrics'] = metrics
 
         # Format checkpoint path
-        checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch + 1}.pth"
-        torch.save(checkpoint, checkpoint_path)
+        if False: ## Set to True to save all checkpoints for all epoches
+            checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch + 1}.pth"
+            torch.save(checkpoint, checkpoint_path)
         
         # If this is the best model, create a copy
         if is_best:
