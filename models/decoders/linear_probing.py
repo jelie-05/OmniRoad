@@ -11,9 +11,6 @@ class LinearProbing(BaseDecoder):
         layers = []
         in_dim = config.input_dim
 
-        width = config.spatial_size
-        height = config.spatial_size
-
         # Add hidden layers
         for i, dim in enumerate(config.hidden_dims):
             layers.append(torch.nn.Conv2d(in_dim, dim, (1, 1)))

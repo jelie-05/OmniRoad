@@ -38,4 +38,5 @@ class SegmentationR2S100k(Config):
     def __post_init__(self):
         self.model = ModelRegistry.get(self.model_name)()
         self.model.decoder.num_classes = self.data.num_classes
+        self.data.input_size = self.model.input_size
         

@@ -1,6 +1,6 @@
 # src/config/schema.py
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import yaml
 from pathlib import Path
 
@@ -23,6 +23,7 @@ class ModelConfig:
     """Base configuration for models."""
     encoder: EncoderConfig
     decoder: DecoderConfig
+    input_size: Tuple[int, int]
 
 @dataclass
 class OptimizerConfig:

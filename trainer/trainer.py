@@ -1315,7 +1315,8 @@ class Trainer:
                 # Log per-class IoU
                 class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
                 for i, iou in enumerate(metrics['iou']):
-                    class_name = class_names[i] if class_names and i < len(class_names) else f"class_{i}"
+                    class_name = class_names[i] if class_names and i < len(class_names) else f"Class {i}"
+                    print(f"    {class_name}: {iou:.4f}")
                     self.writer.add_scalar(f'IoU_per_class/{class_name}', iou, epoch)
             
             return {

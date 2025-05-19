@@ -3,7 +3,6 @@ outputs
 train.bash
 test/
 logs/
-different_span.sh
-test_simple.sh
-test_span.sh
-train.bash
+*.sh
+!lsf_job_script_generation.sh
+!lsf_single_node.sh
