@@ -9,12 +9,14 @@ from .data import DataRegistry
 # Create registry for experiment configurations
 ExperimentRegistry = ConfigRegistry[Config]("ExperimentRegistry")
 
-@ExperimentRegistry.register("dino_segmentation_r2s100k")
+@ExperimentRegistry.register("segmentation_r2s100k")
 @dataclass
-class DinoSegmentationR2S100k(Config):
-    experiment_name: str = "dino_segmentation_r2s100k"
+class SegmentationR2S100k(Config):
+    experiment_name: str = "segmentation_r2s100k"
     # run_id: Optional[str] = None
-    model: ModelConfig = field(default_factory=lambda: ModelRegistry.get("dino_segmentation")())
+    model_name: str = "custom_model"
+    model: ModelConfig = field(init=False)
+    # model: ModelConfig = None
     training: TrainingConfig = field(
         default_factory=lambda: TrainingConfig(
             batch_size=16,
@@ -33,6 +35,7 @@ class DinoSegmentationR2S100k(Config):
     data: DataConfig = field(default_factory=lambda: DataRegistry.get("r2s100k")())
     seed: int = 0
 
-    def __pose_init__(self):
+    def __post_init__(self):
+        self.model = ModelRegistry.get(self.model_name)()
         self.model.decoder.num_classes = self.data.num_classes
-
+        

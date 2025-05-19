@@ -11,13 +11,17 @@ from .data import DataRegistry
 
 def load_config(
     config_path: Optional[Union[str, Path]] = None,
-    experiment_name: Optional[str] = None
+    experiment_name: Optional[str] = None,
+    model_name: Optional[str] = None,
 ) -> Config:
     """Load configuration from file or registry."""
     if experiment_name:
+        if not model_name:
+            raise ValueError("Both experiment_name and model_name must be provided")
         # Load from registry
         experiment_cls = ExperimentRegistry.get(experiment_name)
-        return experiment_cls()
+
+        return experiment_cls(model_name=model_name)
     
     elif config_path:
         # Load from YAML file
@@ -31,9 +35,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Training with configuration")
     
     # Configuration source (mutually exclusive)
-    config_group = parser.add_mutually_exclusive_group()
+    # config_group = parser.add_mutually_exclusive_group(False)
+    config_group = parser.add_argument_group("Config options")
+
     config_group.add_argument("--config", type=str, help="Path to YAML config file")
     config_group.add_argument("--experiment", type=str, help="Name of registered experiment")
+    config_group.add_argument("--model_name", type=str, help="Name of registered model")
     
     # List available configurations
     list_group = parser.add_argument_group("List options")
@@ -115,6 +122,20 @@ def parse_args():
             print(f"  - {name}: {desc}")
         exit(0)
     
+    # Custom validation for config options
+    if args.config:
+        # If --config is provided, --experiment and --model_name should not be used
+        if args.experiment or args.model_name:
+            parser.error("Cannot use --experiment or --model_name with --config. "
+                        "Choose either --config OR (--experiment and --model_name).")
+    else:
+        # If --config is not provided, both --experiment and --model_name are required
+        if not args.experiment:
+            parser.error("--experiment is required when not using --config")
+        if not args.model_name:
+            parser.error("--model_name is required when not using --config")
+    
+    
     return args
 
 def load_config_from_args() -> Config:
@@ -125,7 +146,7 @@ def load_config_from_args() -> Config:
     if args.config:
         config = load_config(config_path=args.config)
     elif args.experiment:
-        config = load_config(experiment_name=args.experiment)
+        config = load_config(experiment_name=args.experiment, model_name=args.model_name)
     else:
         # This should not happen due to validation in parse_args
         raise ValueError("Either --config or --experiment is required")

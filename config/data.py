@@ -19,11 +19,15 @@ class R2S100KConfig(DataConfig):
     std: List[float] = field(default_factory=lambda: [0.229, 0.224, 0.225])
     
     
-    num_workers: int = 4
+    num_workers: int = 8
     
     ## For r2s100k
     num_classes = 15
-    # ignore_index = 0
+    persistent_workers: bool = True
+    pin_memory: bool = True
+    prefetch_factor: int = 4
+    drop_last: bool = True
+
     ignore_index = 255
     label_colors_list = [
             (0, 0, 0), # BG

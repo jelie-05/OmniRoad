@@ -69,7 +69,9 @@ def get_data_loaders(
         shuffle=(train_sampler is None),  # Don't shuffle if using sampler
         num_workers=config.data.num_workers,
         pin_memory=config.data.pin_memory,
-        drop_last=True
+        persistent_workers=config.data.persistent_workers,
+        prefetch_factor=config.data.prefetch_factor,
+        drop_last=config.data.drop_last
     )
     
     val_loader = None
@@ -81,6 +83,8 @@ def get_data_loaders(
             shuffle=False,
             num_workers=config.data.num_workers,
             pin_memory=config.data.pin_memory,
+            persistent_workers=config.data.persistent_workers,
+            prefetch_factor=config.data.prefetch_factor,
             drop_last=False
         )
     
@@ -93,6 +97,8 @@ def get_data_loaders(
             shuffle=False,
             num_workers=config.data.num_workers,
             pin_memory=config.data.pin_memory,
+            persistent_workers=config.data.persistent_workers,
+            prefetch_factor=config.data.prefetch_factor,
             drop_last=False
         )
     

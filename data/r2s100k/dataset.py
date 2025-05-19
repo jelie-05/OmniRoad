@@ -6,7 +6,7 @@ from PIL import Image
 import torch 
 
 class R2S100k(Dataset):
-    def __init__(self, image_base: str, seg_base: str, image_transform, mask_transform, label_colors_list, class_names):
+    def __init__(self, image_base: str, seg_base: str, image_transform, mask_transform, label_colors_list, class_names, split):
         self.image_paths = glob.glob(f"{image_base}/*")
         self.seg_paths = glob.glob(f"{seg_base}/*")
         self.image_paths.sort()
@@ -20,6 +20,7 @@ class R2S100k(Dataset):
         self.image_transform = image_transform
         self.mask_transform = mask_transform
         self.class_values = [self.class_names.index(cls.lower()) for cls in self.class_names]
+        self.split = split
 
     def __len__(self):
         return len(self.image_paths)
@@ -61,8 +62,10 @@ class R2S100k(Dataset):
         # print(mask.size)
         if self.image_transform:
             image = self.image_transform(image)
-        if self.mask_transform:
-            mask = self.mask_transform(mask)
+
+        if self.split != 'test':
+            if self.mask_transform:
+                mask = self.mask_transform(mask)
 
         # image = np.transpose(image, (2, 0, 1))
         mask = np.array(mask)
@@ -73,4 +76,5 @@ class R2S100k(Dataset):
         mask = torch.tensor(mask, dtype=torch.long) 
         # print(image.shape)
         # print(mask.shape)
+        
         return image, mask

@@ -141,6 +141,7 @@ def main():
 
         if is_main_process():
             print(f"Starting experiment: {config.experiment_name}")
+            print(f"Starting experiment: {config.model.name}")
             print(f"Distributed training: {world_size} GPU(s), rank {rank}")
             if resume_training or resume_from:
                 print(f"Resuming training from: {resume_from or 'latest checkpoint'}")

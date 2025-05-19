@@ -24,7 +24,7 @@ from utility.distributed import (
 )
 from tqdm import tqdm
 import numpy as np
-
+import json
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
@@ -42,8 +42,9 @@ class Trainer:
         self,
         model: nn.Module,
         config: Config,
-        train_loader: DataLoader,
+        train_loader: Optional[DataLoader] = None,
         val_loader: Optional[DataLoader] = None,
+        test_loader: Optional[DataLoader] = None,
         device: Optional[torch.device] = None,
         run_id: Optional[str] = None,
         resume_from: Optional[Union[str, Path]] = None,
@@ -70,6 +71,7 @@ class Trainer:
         self.config = config
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.test_loader = test_loader
         self.rank = rank
         self.world_size = world_size
         
@@ -103,6 +105,8 @@ class Trainer:
         if run_id is None:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             run_id = f"{timestamp}"
+            if is_main_process():
+                print(f"run_id is not configured -> Create new run_id: {run_id}")
         
         # Create run-specific directory (only on main process)
         if is_main_process():
@@ -121,11 +125,14 @@ class Trainer:
         if is_distributed():
             synchronize()
             
-        # Set up optimizer
-        self.optimizer = self._create_optimizer()
-        
-        # Set up learning rate scheduler
-        self.scheduler = self._create_scheduler()
+       # Set up optimizer (only needed for training)
+        if self.train_loader is not None:
+            self.optimizer = self._create_optimizer()
+            # Set up learning rate scheduler
+            self.scheduler = self._create_scheduler()
+        else:
+            self.optimizer = None
+            self.scheduler = None
         
         # Set up loss function based on task type
         if hasattr(config.data, 'task_type') and config.data.task_type == 'segmentation':
@@ -181,6 +188,300 @@ class Trainer:
             # Default colormap if not provided
             self.class_colors = None
     
+    def test(self) -> Dict[str, Any]:
+        """
+        Run inference on test dataset.
+        
+        Returns:
+            Dictionary with test metrics and statistics
+        """
+        if self.test_loader is None:
+            raise ValueError("No test loader provided for testing")
+        
+        if is_main_process():
+            print("Starting test evaluation...")
+        
+        start_time = time.time()
+        
+        # Run test evaluation
+        test_metrics = self.test_epoch()
+        
+        # Calculate test time
+        test_time = time.time() - start_time
+        
+        # Save test results
+        if is_main_process():
+            self._save_test_results(test_metrics, test_time)
+            
+            # Print test results
+            print(f"\nTest Results:")
+            print(f"  Test Loss: {test_metrics.get('test_loss', 'N/A'):.4f}")
+            print(f"  Pixel Accuracy: {test_metrics.get('pixel_accuracy', 'N/A'):.4f}")
+            print(f"  Mean Accuracy: {test_metrics.get('mean_accuracy', 'N/A'):.4f}")
+            print(f"  Mean IoU: {test_metrics.get('mean_iou', 'N/A'):.4f}")
+            print(f"  Freq Weighted IoU: {test_metrics.get('fw_iou', 'N/A'):.4f}")
+            print(f"  Test time: {test_time:.2f} seconds")
+            
+            # Print per-class IoU if available
+            if 'iou' in test_metrics:
+                print("\n  IoU per class:")
+                class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
+                for i, iou in enumerate(test_metrics['iou']):
+                    class_name = class_names[i] if class_names and i < len(class_names) else f"Class {i}"
+                    print(f"    {class_name}: {iou:.4f}")
+        
+        return {
+            'test_metrics': test_metrics,
+            'test_time': test_time
+        }
+
+    def test_epoch(self) -> Dict[str, float]:
+        """
+        Run inference for one epoch on test data.
+        
+        Returns:
+            Dictionary with test metrics
+        """
+        self.model.eval()
+        
+        loss_meter = AverageMeter()
+        cuda_mem = AverageMeter()
+
+        # Initialize confusion matrix for IoU calculation
+        confusion_matrix = ConfusionMatrix(self.config.data.num_classes, self.config.data.ignore_index)
+        
+        # Storage for test samples visualization
+        num_samples_to_visualize = min(8, self.config.training.batch_size if hasattr(self.config.training, 'batch_size') else 4)
+        samples_visualized = 0
+        test_samples = []
+
+        with torch.no_grad():
+            # Only show progress bar on main process
+            if is_main_process():
+                pbar = tqdm(self.test_loader, desc='[TESTING]')
+            else:
+                pbar = self.test_loader
+
+            for batch_idx, batch in enumerate(pbar):
+                # Get data
+                if isinstance(batch, dict):
+                    inputs = batch['image'].to(self.device)
+                    targets = batch['target'].to(self.device)
+                else:  # Assume tuple (inputs, targets)
+                    inputs, targets = batch
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                
+                # Run forward pass
+                outputs = self.model(inputs)
+                outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
+
+                loss = self.criterion(outputs, targets)
+                
+                # Update metrics
+                loss_meter.update(loss.item(), inputs.size(0))
+                if torch.cuda.is_available():
+                    cuda_mem.update(torch.cuda.max_memory_allocated(device=None) / (1024 * 1024 * 1024))
+                
+                # Update confusion matrix for IoU calculation
+                confusion_matrix.update(outputs, targets)
+                
+                # Store samples for visualization
+                if samples_visualized < num_samples_to_visualize:
+                    for i in range(min(num_samples_to_visualize - samples_visualized, inputs.shape[0])):
+                        test_samples.append({
+                            'image': inputs[i].cpu(),
+                            'target': targets[i].cpu(),
+                            'prediction': outputs[i].cpu(),
+                            'sample_id': f"batch_{batch_idx}_sample_{i}"
+                        })
+                        samples_visualized += 1
+                        if samples_visualized >= num_samples_to_visualize:
+                            break
+                
+                # Update progress bar only on main process
+                if is_main_process():
+                    monitor = {
+                        'Loss': f'{loss_meter.val:.4f} ({loss_meter.avg:.4f})',
+                        'CUDA': f'{cuda_mem.val:.2f} ({cuda_mem.avg:.2f})'
+                    }
+                    pbar.set_postfix(monitor)
+
+        # Gather metrics from all processes (similar to validation)
+        if is_distributed():
+            # Gather basic loss and memory stats
+            process_stats = torch.tensor([
+                loss_meter.avg,
+                cuda_mem.avg,
+                loss_meter.sum,   # Total loss
+                loss_meter.count  # Total samples
+            ], device=self.device)
+            
+            gathered_stats = gather_tensor(process_stats)
+            
+            # Gather and sum confusion matrices for accurate global metrics
+            if confusion_matrix.mat is not None:
+                cm_tensor = torch.tensor(confusion_matrix.mat, dtype=torch.float32, device=self.device)
+            else:
+                cm_tensor = torch.zeros((self.config.data.num_classes, self.config.data.num_classes), 
+                                      dtype=torch.float32, device=self.device)
+            
+            gathered_cm = gather_tensor(cm_tensor)
+            
+            if is_main_process():
+                world_size = get_world_size()
+                
+                # Extract individual process stats
+                all_avg_losses = gathered_stats[0::4]
+                all_cuda_mem = gathered_stats[1::4]
+                all_total_losses = gathered_stats[2::4]
+                all_sample_counts = gathered_stats[3::4]
+                
+                # Sum confusion matrices to get global confusion matrix
+                num_classes = self.config.data.num_classes
+                global_cm = gathered_cm.view(world_size, num_classes, num_classes).sum(dim=0)
+                
+                # Compute global metrics from the summed confusion matrix
+                confusion_matrix.mat = global_cm.cpu().numpy().astype(np.int64)
+                global_metrics = confusion_matrix.compute()
+                
+                # Compute global average loss (weighted by sample count)
+                total_samples = all_sample_counts.sum().item()
+                global_loss = all_total_losses.sum().item() / total_samples if total_samples > 0 else 0
+                
+                # Log test results to TensorBoard
+                if self.writer:
+                    # Use current time as "epoch" for test results
+                    test_step = int(time.time())
+                    self.writer.add_scalar('Test/loss', global_loss, test_step)
+                    self.writer.add_scalar('Test/pixel_accuracy', global_metrics['pixel_accuracy'], test_step)
+                    self.writer.add_scalar('Test/mean_accuracy', global_metrics['mean_accuracy'], test_step)
+                    self.writer.add_scalar('Test/mean_iou', global_metrics['mean_iou'], test_step)
+                    self.writer.add_scalar('Test/fw_iou', global_metrics['fw_iou'], test_step)
+                    
+                    # Log per-class IoU
+                    class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
+                    for i, iou in enumerate(global_metrics['iou']):
+                        class_name = class_names[i] if class_names and i < len(class_names) else f"class_{i}"
+                        self.writer.add_scalar(f'Test/IoU_per_class/{class_name}', iou, test_step)
+                    
+                    # Visualize test samples
+                    for idx, sample in enumerate(test_samples):
+                        self.log_segmentation_sample(
+                            sample['image'], 
+                            sample['prediction'], 
+                            sample['target'],
+                            test_step, 
+                            f"test_{sample['sample_id']}"
+                        )
+                
+                return {
+                    'test_loss': global_loss,
+                    'pixel_accuracy': global_metrics['pixel_accuracy'],
+                    'mean_accuracy': global_metrics['mean_accuracy'],
+                    'mean_iou': global_metrics['mean_iou'],
+                    'fw_iou': global_metrics['fw_iou'],
+                    'iou': global_metrics['iou'],
+                    'confusion_matrix': global_cm.cpu().numpy()
+                }
+            else:
+                # Non-main processes return dummy metrics
+                return {
+                    'test_loss': loss_meter.avg,
+                    'pixel_accuracy': 0.0,
+                    'mean_accuracy': 0.0,
+                    'mean_iou': 0.0,
+                    'fw_iou': 0.0
+                }
+        else:
+            # Single process - compute metrics normally
+            metrics = confusion_matrix.compute()
+            
+            # Log test results to TensorBoard
+            if is_main_process() and self.writer:
+                test_step = int(time.time())
+                self.writer.add_scalar('Test/loss', loss_meter.avg, test_step)
+                self.writer.add_scalar('Test/pixel_accuracy', metrics['pixel_accuracy'], test_step)
+                self.writer.add_scalar('Test/mean_accuracy', metrics['mean_accuracy'], test_step)
+                self.writer.add_scalar('Test/mean_iou', metrics['mean_iou'], test_step)
+                self.writer.add_scalar('Test/fw_iou', metrics['fw_iou'], test_step)
+                
+                # Log per-class IoU
+                class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
+                for i, iou in enumerate(metrics['iou']):
+                    class_name = class_names[i] if class_names and i < len(class_names) else f"class_{i}"
+                    self.writer.add_scalar(f'Test/IoU_per_class/{class_name}', iou, test_step)
+                
+                # Visualize test samples
+                for idx, sample in enumerate(test_samples):
+                    self.log_segmentation_sample(
+                        sample['image'], 
+                        sample['prediction'], 
+                        sample['target'],
+                        test_step, 
+                        f"test_{sample['sample_id']}"
+                    )
+            
+            return {
+                'test_loss': loss_meter.avg,
+                'pixel_accuracy': metrics['pixel_accuracy'],
+                'mean_accuracy': metrics['mean_accuracy'],
+                'mean_iou': metrics['mean_iou'],
+                'fw_iou': metrics['fw_iou'],
+                'iou': metrics['iou'],
+                'confusion_matrix': metrics.get('confusion_matrix', confusion_matrix.mat)
+            }
+
+    def _save_test_results(self, test_metrics: Dict[str, Any], test_time: float):
+        """Save test results to files."""
+        results_dir = self.output_dir / "test_results"
+        os.makedirs(results_dir, exist_ok=True)
+        
+        # Save detailed metrics as JSON
+        test_results = {
+            'timestamp': datetime.datetime.now().isoformat(),
+            'test_time_seconds': test_time,
+            'metrics': {}
+        }
+        
+        # Copy all metrics except numpy arrays
+        for key, value in test_metrics.items():
+            if isinstance(value, np.ndarray):
+                test_results['metrics'][key] = value.tolist()
+            else:
+                test_results['metrics'][key] = value
+        
+        with open(results_dir / "test_metrics.json", 'w') as f:
+            json.dump(test_results, f, indent=4)
+        
+        # Save human-readable summary
+        with open(results_dir / "test_summary.txt", 'w') as f:
+            f.write(f"Test Results Summary\n")
+            f.write(f"==================\n\n")
+            f.write(f"Timestamp: {test_results['timestamp']}\n")
+            f.write(f"Test time: {test_time:.2f} seconds\n\n")
+            f.write(f"Overall Metrics:\n")
+            f.write(f"  Test Loss: {test_metrics.get('test_loss', 'N/A'):.4f}\n")
+            f.write(f"  Pixel Accuracy: {test_metrics.get('pixel_accuracy', 'N/A'):.4f}\n")
+            f.write(f"  Mean Accuracy: {test_metrics.get('mean_accuracy', 'N/A'):.4f}\n")
+            f.write(f"  Mean IoU: {test_metrics.get('mean_iou', 'N/A'):.4f}\n")
+            f.write(f"  Freq Weighted IoU: {test_metrics.get('fw_iou', 'N/A'):.4f}\n\n")
+            
+            if 'iou' in test_metrics:
+                f.write(f"Per-Class IoU:\n")
+                class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
+                for i, iou in enumerate(test_metrics['iou']):
+                    class_name = class_names[i] if class_names and i < len(class_names) else f"Class {i}"
+                    f.write(f"  {class_name}: {iou:.4f}\n")
+        
+        # Save confusion matrix as CSV
+        if 'confusion_matrix' in test_metrics:
+            np.savetxt(results_dir / "confusion_matrix.csv", 
+                      test_metrics['confusion_matrix'], 
+                      delimiter=',', fmt='%d')
+        
+        print(f"Test results saved to {results_dir}")
+
     def _find_checkpoint_to_resume(self, resume_from: Optional[str], run_id: Optional[str]) -> Optional[Path]:
         """Find the checkpoint to resume from."""
         if resume_from:
@@ -255,12 +556,14 @@ class Trainer:
             else:
                 self.model.load_state_dict(checkpoint['model_state_dict'])
             
-            # Load optimizer state
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            # Load optimizer and scheduler state only if training
+            if self.optimizer is not None:
+                # Load optimizer state
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             
-            # Load scheduler state if available
-            if 'scheduler_state_dict' in checkpoint and self.scheduler:
-                self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+                # Load scheduler state if available
+                if 'scheduler_state_dict' in checkpoint and self.scheduler:
+                    self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             
             # Load training progress
             self.start_epoch = checkpoint.get('epoch', 0)
@@ -1047,14 +1350,22 @@ class Trainer:
         image_np = image_denorm.cpu().numpy().transpose(1, 2, 0)
         image_np = np.clip(image_np, 0, 1)
         
+        # Get target mask
+        target_mask = target.cpu().numpy()
+        target_height, target_width = target_mask.shape
+
+        # Convert to PIL Image for resizing
+        image_pil = Image.fromarray((image_np * 255).astype(np.uint8))
+        image_resized = image_pil.resize((target_width, target_height), Image.BILINEAR)
+        image_np = np.array(image_resized).astype(np.float32) / 255.0
+        
         # Get predicted class indices
         if prediction.dim() == 3:  # [C, H, W]
             predicted_mask = torch.argmax(prediction, dim=0).cpu().numpy()
         else:  # [H, W]
             predicted_mask = prediction.cpu().numpy()
         
-        # Get target mask
-        target_mask = target.cpu().numpy()
+        
         
         # Show original image
         ax1.imshow(image_np)
