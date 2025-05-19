@@ -15,13 +15,28 @@ class DinoViTS8Config(EncoderConfig):
     freeze: bool = True
     output_dim: int = 384
     patch_size: int = 8
-    spatial_size: int = 28
     attention_heads: int = 6
     
     def __post_init__(self):
-        # Ensure name is correct
         self.name = "dino_vits8"
         self.output_dim = 384
         self.patch_size = 8
         self.attention_heads = 6
-        self.spatial_size = 28
+
+@EncoderRegistry.register("dinov2_vits14")
+@dataclass
+class Dinov2ViTS14Config(EncoderConfig):
+    """Configuration for DINOv2 ViT-S/14 model."""
+    name: str = "dinov2_vits14"
+    freeze: bool = True
+    output_dim: int = 384
+    patch_size: int = 14
+    attention_heads: int = 6
+
+    def __post_init__(self):
+        # Ensure name is correct
+        self.name = "dinov2_vits14"
+        self.output_dim = 384
+        self.patch_size = 14
+        self.attention_heads = 6
+

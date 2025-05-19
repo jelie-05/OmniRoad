@@ -1,6 +1,6 @@
 """Dataset configurations."""
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 from .base import DataConfig
 from .registry import ConfigRegistry
@@ -11,6 +11,7 @@ DataRegistry = ConfigRegistry[DataConfig]("DataRegistry")
 @DataRegistry.register("r2s100k")
 @dataclass
 class R2S100KConfig(DataConfig):
+    input_size: Tuple[int, int] = None
     dataset_name: str = "r2s100k"
     dataset_path: str = "/home/phd_li/dataset/r2s100k"
     task_type: str = "segmentation"
@@ -49,17 +50,17 @@ class R2S100KConfig(DataConfig):
 
     # all the classes that are present in the dataset
     class_names = ['bg', 'wet_road_region', 'road_region', 'mud', 'earthen_patch', 'mountain-stones', 'dirt', 'vegitation_misc', 'distressed_patch', 'drainage_grate', 'water_puddle', 'speed_breaker', 'misc', 'gravel_patch', 'concrete_material']
-        
+    
     def get_transforms(self):
         """Get transforms based on configuration."""
         image_transform = T.Compose([
-            T.Resize((224, 224)),
+            T.Resize(self.input_size),
             T.ToTensor(),
             T.Normalize(mean=self.mean, std=self.std),
         ])
         
         mask_transform = T.Compose([
-            T.Resize((224, 224))
+            T.Resize(self.input_size)
         ])
         
         return image_transform, mask_transform

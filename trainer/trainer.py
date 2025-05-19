@@ -1315,7 +1315,9 @@ class Trainer:
                 # Log per-class IoU
                 class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
                 for i, iou in enumerate(metrics['iou']):
-                    class_name = class_names[i] if class_names and i < len(class_names) else f"class_{i}"
+                    class_name = class_names[i] if class_names and i < len(class_names) else f"Class {i}"
+                    print(f"    {class_name}: {iou:.4f}")
+
                     self.writer.add_scalar(f'IoU_per_class/{class_name}', iou, epoch)
             
             return {
@@ -1474,8 +1476,9 @@ class Trainer:
             checkpoint['current_metrics'] = metrics
 
         # Format checkpoint path
-        checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch + 1}.pth"
-        torch.save(checkpoint, checkpoint_path)
+        if False: ## Set to True to save all checkpoints for all epoches
+            checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch + 1}.pth"
+            torch.save(checkpoint, checkpoint_path)
         
         # If this is the best model, create a copy
         if is_best:

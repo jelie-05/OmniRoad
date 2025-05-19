@@ -17,4 +17,4 @@ class LinearProbingConfig(DecoderConfig):
     dropout: float = 0.1
     activation: str = "relu"
     num_classes: int = -1
-    spatial_size: int = -1
+    # spatial_size: int = -1

@@ -408,6 +408,287 @@ def export_comparison_csv(experiment_name, run_ids, output_file, include_test=Fa
     else:
         print("No data found to export")
 
+def compare_test_results(experiment_name, run_ids):
+    """Compare only test results between multiple runs."""
+    compare_runs(experiment_name, run_ids, include_test=True)
+
+def load_run_config(experiment_name, run_id):
+    """Load configuration for a specific run."""
+    run_dir = Path(f"outputs/{experiment_name}/{run_id}")
+    config_path = run_dir / "config.yaml"
+    
+    if not config_path.exists():
+        return None
+    
+    try:
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"Error loading config for {run_id}: {e}")
+        return None
+
+def flatten_dict(d, parent_key='', sep='.'):
+    """Flatten a nested dictionary."""
+    items = []
+    if isinstance(d, dict):
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten_dict(v, new_key, sep=sep).items())
+            elif isinstance(v, (list, tuple)):
+                # Convert lists/tuples to string representation
+                items.append((new_key, str(v)))
+            else:
+                items.append((new_key, v))
+    else:
+        items.append((parent_key, d))
+    return dict(items)
+
+def compare_configs(experiment_name, run_id1, run_id2, detailed=False):
+    """Compare configurations between two runs."""
+    print(f"Comparing configurations between '{run_id1}' and '{run_id2}'")
+    print("=" * 80)
+    
+    # Load configurations
+    config1 = load_run_config(experiment_name, run_id1)
+    config2 = load_run_config(experiment_name, run_id2)
+    
+    if config1 is None:
+        print(f"Error: Could not load configuration for run '{run_id1}'")
+        return
+    
+    if config2 is None:
+        print(f"Error: Could not load configuration for run '{run_id2}'")
+        return
+    
+    # Flatten the dictionaries for easier comparison
+    flat_config1 = flatten_dict(config1)
+    flat_config2 = flatten_dict(config2)
+    
+    # Find all keys
+    all_keys = set(flat_config1.keys()) | set(flat_config2.keys())
+    
+    # Categorize differences
+    differences = []
+    same_values = []
+    only_in_run1 = []
+    only_in_run2 = []
+    
+    for key in sorted(all_keys):
+        if key in flat_config1 and key in flat_config2:
+            val1 = flat_config1[key]
+            val2 = flat_config2[key]
+            if val1 != val2:
+                differences.append((key, val1, val2))
+            else:
+                same_values.append((key, val1))
+        elif key in flat_config1:
+            only_in_run1.append((key, flat_config1[key]))
+        else:
+            only_in_run2.append((key, flat_config2[key]))
+    
+    # Print differences
+    if differences:
+        print(f"\n🔄 DIFFERENCES ({len(differences)} items):")
+        print("-" * 80)
+        print(f"{'Parameter':<40} {'Run 1 (' + run_id1[-20:] + ')':<25} {'Run 2 (' + run_id2[-20:] + ')':<25}")
+        print("-" * 80)
+        for key, val1, val2 in differences:
+            # Truncate long values for display
+            val1_str = str(val1)[:24] if len(str(val1)) > 24 else str(val1)
+            val2_str = str(val2)[:24] if len(str(val2)) > 24 else str(val2)
+            print(f"{key:<40} {val1_str:<25} {val2_str:<25}")
+    else:
+        print(f"\n✅ NO DIFFERENCES FOUND")
+    
+    # Print items only in run 1
+    if only_in_run1:
+        print(f"\n📝 ONLY IN RUN 1 ({run_id1}) - {len(only_in_run1)} items:")
+        print("-" * 60)
+        for key, val in only_in_run1:
+            val_str = str(val)[:40] if len(str(val)) > 40 else str(val)
+            print(f"  {key:<35} = {val_str}")
+    
+    # Print items only in run 2
+    if only_in_run2:
+        print(f"\n📝 ONLY IN RUN 2 ({run_id2}) - {len(only_in_run2)} items:")
+        print("-" * 60)
+        for key, val in only_in_run2:
+            val_str = str(val)[:40] if len(str(val)) > 40 else str(val)
+            print(f"  {key:<35} = {val_str}")
+    
+    # Print same values if detailed mode
+    if detailed and same_values:
+        print(f"\n✅ IDENTICAL VALUES ({len(same_values)} items):")
+        print("-" * 60)
+        for key, val in same_values[:20]:  # Limit to first 20 for readability
+            val_str = str(val)[:40] if len(str(val)) > 40 else str(val)
+            print(f"  {key:<35} = {val_str}")
+        if len(same_values) > 20:
+            print(f"  ... and {len(same_values) - 20} more identical parameters")
+    
+    # Summary
+    print(f"\n📊 SUMMARY:")
+    print(f"  Different values: {len(differences)}")
+    print(f"  Only in {run_id1}: {len(only_in_run1)}")
+    print(f"  Only in {run_id2}: {len(only_in_run2)}")
+    print(f"  Identical values: {len(same_values)}")
+    print("=" * 80)
+
+def compare_multiple_configs(experiment_name, run_ids, detailed=False):
+    """Compare configurations across multiple runs."""
+    if len(run_ids) < 2:
+        print("Error: At least 2 run IDs are required for comparison")
+        return
+    
+    print(f"Comparing configurations across {len(run_ids)} runs")
+    print("=" * 100)
+    
+    # Load all configurations
+    configs = {}
+    for run_id in run_ids:
+        config = load_run_config(experiment_name, run_id)
+        if config is None:
+            print(f"Warning: Could not load configuration for run '{run_id}', skipping...")
+            continue
+        configs[run_id] = flatten_dict(config)
+    
+    if len(configs) < 2:
+        print("Error: Could not load at least 2 configurations")
+        return
+    
+    # Find all keys across all configs
+    all_keys = set()
+    for config in configs.values():
+        all_keys.update(config.keys())
+    
+    # Analyze each parameter
+    varying_params = {}
+    constant_params = {}
+    
+    for key in sorted(all_keys):
+        values = {}
+        for run_id, config in configs.items():
+            if key in config:
+                values[run_id] = config[key]
+        
+        # Check if parameter varies across runs
+        unique_values = set(values.values())
+        if len(unique_values) > 1:
+            varying_params[key] = values
+        elif len(values) == len(configs):  # Present in all configs with same value
+            constant_params[key] = list(unique_values)[0]
+    
+    # Display varying parameters
+    if varying_params:
+        print(f"\n🔄 VARYING PARAMETERS ({len(varying_params)} items):")
+        print("-" * 100)
+        
+        # Create header with run IDs
+        header = f"{'Parameter':<35}"
+        for run_id in run_ids:
+            header += f" {run_id[-18:]:<20}"
+        print(header)
+        print("-" * 100)
+        
+        # Display each varying parameter
+        for param, values in varying_params.items():
+            row = f"{param:<35}"
+            for run_id in run_ids:
+                val_str = str(values.get(run_id, 'N/A'))[:19]
+                row += f" {val_str:<20}"
+            print(row)
+    
+    # Display constant parameters if detailed
+    if detailed and constant_params:
+        print(f"\n✅ CONSTANT PARAMETERS ({len(constant_params)} items):")
+        print("-" * 80)
+        for param, value in list(constant_params.items())[:20]:
+            val_str = str(value)[:40] if len(str(value)) > 40 else str(value)
+            print(f"  {param:<35} = {val_str}")
+        if len(constant_params) > 20:
+            print(f"  ... and {len(constant_params) - 20} more constant parameters")
+    
+    # Parameters missing from some runs
+    missing_params = {}
+    for key in all_keys:
+        missing_in = []
+        for run_id in run_ids:
+            if run_id in configs and key not in configs[run_id]:
+                missing_in.append(run_id)
+        if missing_in:
+            missing_params[key] = missing_in
+    
+    if missing_params:
+        print(f"\n⚠️  PARAMETERS MISSING IN SOME RUNS ({len(missing_params)} items):")
+        print("-" * 80)
+        for param, missing_in in missing_params.items():
+            print(f"  {param:<35} missing in: {', '.join(missing_in)}")
+    
+    # Summary
+    print(f"\n📊 SUMMARY:")
+    print(f"  Total parameters analyzed: {len(all_keys)}")
+    print(f"  Varying across runs: {len(varying_params)}")
+    print(f"  Constant across runs: {len(constant_params)}")
+    print(f"  Missing in some runs: {len(missing_params)}")
+    print("=" * 100)
+
+def export_config_comparison(experiment_name, run_ids, output_file, format='csv'):
+    """Export configuration comparison to file."""
+    if len(run_ids) < 2:
+        print("Error: At least 2 run IDs are required for comparison")
+        return
+    
+    # Load all configurations
+    configs = {}
+    for run_id in run_ids:
+        config = load_run_config(experiment_name, run_id)
+        if config is None:
+            print(f"Warning: Could not load configuration for run '{run_id}', skipping...")
+            continue
+        configs[run_id] = flatten_dict(config)
+    
+    if len(configs) < 2:
+        print("Error: Could not load at least 2 configurations")
+        return
+    
+    # Find all keys
+    all_keys = set()
+    for config in configs.values():
+        all_keys.update(config.keys())
+    
+    # Prepare data for export
+    data = []
+    for key in sorted(all_keys):
+        row = {'parameter': key}
+        for run_id in run_ids:
+            row[run_id] = configs.get(run_id, {}).get(key, 'N/A')
+        data.append(row)
+    
+    # Export based on format
+    if format.lower() == 'csv':
+        import csv
+        with open(output_file, 'w', newline='') as f:
+            if data:
+                fieldnames = ['parameter'] + run_ids
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(data)
+        print(f"Configuration comparison exported to {output_file}")
+    
+    elif format.lower() == 'json':
+        with open(output_file, 'w') as f:
+            json.dump({
+                'experiment': experiment_name,
+                'run_ids': run_ids,
+                'timestamp': datetime.datetime.now().isoformat(),
+                'comparisons': data
+            }, f, indent=2)
+        print(f"Configuration comparison exported to {output_file}")
+    
+    else:
+        print(f"Unsupported format: {format}. Use 'csv' or 'json'.")
+        
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage experiment runs")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -456,6 +737,26 @@ if __name__ == "__main__":
     export_parser.add_argument("--output", type=str, required=True, help="Output CSV file path")
     export_parser.add_argument("--test", action="store_true", help="Include test results in export")
     
+    # NEW: Compare configurations command
+    config_diff_parser = subparsers.add_parser("config-diff", help="Compare configurations between two runs")
+    config_diff_parser.add_argument("experiment", type=str, help="Name of the experiment")
+    config_diff_parser.add_argument("run_id1", type=str, help="First run identifier")
+    config_diff_parser.add_argument("run_id2", type=str, help="Second run identifier")
+    config_diff_parser.add_argument("--detailed", action="store_true", help="Show identical parameters as well")
+    
+    # NEW: Compare multiple configurations command
+    config_multi_parser = subparsers.add_parser("config-compare", help="Compare configurations across multiple runs")
+    config_multi_parser.add_argument("experiment", type=str, help="Name of the experiment")
+    config_multi_parser.add_argument("run_ids", type=str, nargs="+", help="Run identifiers to compare")
+    config_multi_parser.add_argument("--detailed", action="store_true", help="Show constant parameters as well")
+    
+    # NEW: Export configuration comparison command
+    config_export_parser = subparsers.add_parser("config-export", help="Export configuration comparison to file")
+    config_export_parser.add_argument("experiment", type=str, help="Name of the experiment")
+    config_export_parser.add_argument("run_ids", type=str, nargs="+", help="Run identifiers to compare")
+    config_export_parser.add_argument("--output", type=str, required=True, help="Output file path")
+    config_export_parser.add_argument("--format", type=str, choices=['csv', 'json'], default='csv', help="Output format")
+
     args = parser.parse_args()
     
     if args.command == "list":
@@ -486,5 +787,11 @@ if __name__ == "__main__":
         compare_test_results(args.experiment, args.run_ids)
     elif args.command == "export":
         export_comparison_csv(args.experiment, args.run_ids, args.output, include_test=args.test)
+    elif args.command == "config-diff":
+        compare_configs(args.experiment, args.run_id1, args.run_id2, detailed=args.detailed)
+    elif args.command == "config-compare":
+        compare_multiple_configs(args.experiment, args.run_ids, detailed=args.detailed)
+    elif args.command == "config-export":
+        export_config_comparison(args.experiment, args.run_ids, args.output, args.format)
     else:
         parser.print_help()
