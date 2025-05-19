@@ -14,7 +14,6 @@ ModelRegistry = ConfigRegistry[ModelConfig]("ModelRegistry")
 class DinoViTS8LinearProbingConfig(ModelConfig):
     name: str = 'dino_vits8-linear_probing'
     input_size: Tuple[int, int] = (224, 224)
-
     encoder: EncoderConfig = field(
         default_factory=lambda: EncoderRegistry.get("dino_vits8")()
     )

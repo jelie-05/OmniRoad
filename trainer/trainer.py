@@ -1317,6 +1317,7 @@ class Trainer:
                 for i, iou in enumerate(metrics['iou']):
                     class_name = class_names[i] if class_names and i < len(class_names) else f"Class {i}"
                     print(f"    {class_name}: {iou:.4f}")
+
                     self.writer.add_scalar(f'IoU_per_class/{class_name}', iou, epoch)
             
             return {
