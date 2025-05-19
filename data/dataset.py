@@ -64,7 +64,8 @@ def get_dataset(config: DataConfig, split: str = "train") -> Optional[Dataset]:
             image_transform=image_transform,
             mask_transform=mask_transform,
             class_names=config.class_names,
-            label_colors_list=config.label_colors_list
+            label_colors_list=config.label_colors_list,
+            split=split
         )
     
     # Add handling for other datasets here

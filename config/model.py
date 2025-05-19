@@ -9,9 +9,10 @@ from .decoder import DecoderRegistry
 # Create registry for full model configurations
 ModelRegistry = ConfigRegistry[ModelConfig]("ModelRegistry")
 
-@ModelRegistry.register("dino_segmentation")
+@ModelRegistry.register("dino_vits8-linear_probing")
 @dataclass
-class DinoSegmentationConfig(ModelConfig):
+class DinoViTS8LinearProbingConfig(ModelConfig):
+    name: str = 'dino_vits8-linear_probing'
     encoder: EncoderConfig = field(
         default_factory=lambda: EncoderRegistry.get("dino_vits8")()
     )
