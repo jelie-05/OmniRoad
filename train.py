@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch
 torch.hub.set_dir('/home/phd_li/.cache/torch/hub')
+os.environ['HF_HOME'] = '/home/phd_li/.cache/huggingface'
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader

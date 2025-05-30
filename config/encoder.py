@@ -78,3 +78,11 @@ class CLIPViTB16Config(EncoderConfig):
         self.patch_size = 16
         self.attention_heads = 12
 
+@EncoderRegistry.register("swinv2_tiny_window8_256")
+@dataclass
+class SwinV2TinyWindow8Config(EncoderConfig):
+    """Configuration for SwinV2 Tiny Window 8 model."""
+    name: str = "swinv2_tiny_window8_256"
+    freeze: bool = True
+    output_dim: List[int] = field(default_factory=lambda: [96, 192, 384, 768])
+
