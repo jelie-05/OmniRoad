@@ -135,13 +135,16 @@ class Trainer:
             self.scheduler = None
         
         # Set up loss function based on task type
-        if hasattr(config.data, 'task_type') and config.data.task_type == 'segmentation':
-            # For segmentation tasks
-            self.criterion = nn.CrossEntropyLoss(ignore_index=config.data.ignore_index 
+        # if hasattr(config.data, 'task_type') and config.data.task_type == 'segmentation':
+        #     # For segmentation tasks
+        #     self.criterion = nn.CrossEntropyLoss(ignore_index=config.data.ignore_index 
+        #                                         if hasattr(config.data, 'ignore_index') else 255)
+        # else:
+        #     # Default for classification
+        #     self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss()
+        self.criterion_eval = nn.CrossEntropyLoss(ignore_index=config.data.ignore_index 
                                                 if hasattr(config.data, 'ignore_index') else 255)
-        else:
-            # Default for classification
-            self.criterion = nn.CrossEntropyLoss()
         
         # Initialize training state variables
         self.best_val_loss = float('inf')
@@ -205,6 +208,7 @@ class Trainer:
         
         # Run test evaluation
         test_metrics = self.test_epoch()
+        # test_metrics = self.test_epoch_r2s() ## has verified that it's identical to our computation
         
         # Calculate test time
         test_time = time.time() - start_time
@@ -234,6 +238,131 @@ class Trainer:
             'test_metrics': test_metrics,
             'test_time': test_time
         }
+    
+    def batch_pix_accuracy(self, predict, target, labeled):
+        pixel_labeled = labeled.sum()
+        pixel_correct = ((predict == target) * labeled).sum()
+        assert pixel_correct <= pixel_labeled, "Correct area should be smaller than Labeled"
+        return pixel_correct.cpu().numpy(), pixel_labeled.cpu().numpy()
+
+    def batch_iou(self, predictions, target, num_classes, labeled):
+        labeled_mask = labeled.view(-1)
+        pred_flat = predictions.view(-1)[labeled_mask]
+        target_flat = target.view(-1)[labeled_mask]
+        
+        # Find pixels where prediction matches target (intersection)
+        correct_mask = (pred_flat == target_flat)
+        intersection_classes = target_flat[correct_mask]
+        
+        area_inter = torch.histc(intersection_classes.float(), bins=num_classes, max=num_classes-1, min=0)
+        area_pred = torch.histc(pred_flat.float(), bins=num_classes, max=num_classes-1, min=0)
+        area_lab = torch.histc(target_flat.float(), bins=num_classes, max=num_classes-1, min=0)
+        print('Inter', area_inter.int())
+        print('Pred', area_pred.int())
+        print('GT', area_lab.int())
+        area_union = area_pred + area_lab - area_inter
+        print('Union', area_union.int())
+        assert (area_inter <= area_union).all(), f"Intersection area should be smaller than Union area"
+        return area_inter.cpu().numpy(), area_union.cpu().numpy()
+    
+    def eval_metric(self, output, target, num_classes):
+        _, predictions = torch.max(output.data, 1)
+        labeled = (target >= 0) * (target < num_classes)
+        correct, num_labeled = self.batch_pix_accuracy(predictions, target, labeled)
+        inter, union = self.batch_iou(predictions, target, num_classes, labeled)
+        return [np.round(correct, 5), np.round(num_labeled, 5), np.round(inter, 5), np.round(union, 5)]
+    
+    def test_epoch_r2s(self) -> Dict[str, float]:
+        self.model.eval()
+        valid_running_loss = 0.0
+        valid_running_inter, valid_running_union = 0, 0
+        valid_running_correct, valid_running_label = 0, 0
+
+        loss_meter = AverageMeter()
+        cuda_mem = AverageMeter()
+
+        with torch.no_grad():
+            # Only show progress bar on main process
+            if is_main_process():
+                pbar = tqdm(self.test_loader, desc='[TESTING]')
+            else:
+                pbar = self.test_loader
+
+            for batch_idx, batch in enumerate(pbar):
+                # Get data
+                if isinstance(batch, dict):
+                    inputs = batch['image'].to(self.device)
+                    targets = batch['target'].to(self.device)
+                else:  # Assume tuple (inputs, targets)
+                    inputs, targets = batch
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                
+                # Run forward pass
+                outputs = self.model(inputs)
+                outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
+
+                loss = self.criterion_eval(outputs, targets)
+                
+                # Update metrics
+                loss_meter.update(loss.item(), inputs.size(0))
+                if torch.cuda.is_available():
+                    cuda_mem.update(torch.cuda.max_memory_allocated(device=None) / (1024 * 1024 * 1024))
+                
+                # Update confusion matrix for IoU calculation
+                # confusion_matrix.update(outputs, targets)
+                
+                # Update progress bar only on main process
+                ##### BATCH-WISE METRICS ####
+                correct, labeled, inter, union = self.eval_metric(outputs, 
+                                                                targets, 
+                                                                self.config.data.num_classes)
+                valid_running_inter += inter
+                valid_running_union += union
+                # for pixel accuracy
+                valid_running_correct += correct
+                valid_running_label += labeled
+                #############################
+
+                ##### TENSORBOARD LOGGING #####
+                valid_running_IoU = 1.0 * inter / (np.spacing(1) + union)
+                valid_running_mIoU = valid_running_IoU.mean()
+                valid_running_pixacc = 1.0 * correct / (np.spacing(1) + labeled)
+                ###############################
+
+                if is_main_process():
+                    monitor = {
+                        'Loss': f'{loss_meter.val:.4f} ({loss_meter.avg:.4f})',
+                        'CUDA': f'{cuda_mem.val:.2f} ({cuda_mem.avg:.2f})',
+                        'mIoU': f'{valid_running_mIoU:.4f}',
+                        'PixAcc': f'{valid_running_pixacc:.4f}'
+                    }
+                    pbar.set_postfix(monitor)
+
+        # Final calculations
+        final_IoU = valid_running_inter / (np.spacing(1) + valid_running_union)
+        final_mIoU = final_IoU.mean()
+        final_pixacc = valid_running_correct / (np.spacing(1) + valid_running_label)
+        
+        # Calculate class accuracy (per-class pixel accuracy)
+        # For this, we'd need per-class correct/total counts, which isn't tracked in the original R2S
+        # As an approximation, we'll use the per-class IoU converted to accuracy
+        class_accuracy = final_IoU  # This is an approximation
+        mean_accuracy = class_accuracy.mean()
+        
+        # Calculate frequency weighted IoU
+        class_frequencies = valid_running_union / valid_running_union.sum()
+        fw_iou = (class_frequencies * final_IoU).sum()
+
+        return {
+            'test_loss': loss_meter.avg,
+            'pixel_accuracy': final_pixacc,
+            'mean_accuracy': mean_accuracy,
+            'mean_iou': final_mIoU,
+            'fw_iou': fw_iou,
+            'iou': final_IoU,
+            'confusion_matrix': None
+        }
 
     def test_epoch(self) -> Dict[str, float]:
         """
@@ -249,6 +378,9 @@ class Trainer:
 
         # Initialize confusion matrix for IoU calculation
         confusion_matrix = ConfusionMatrix(self.config.data.num_classes, self.config.data.ignore_index)
+        if is_main_process():
+            print(f"Ignore indices: {self.config.data.ignore_index}")
+        # confusion_matrix = ConfusionMatrix(self.config.data.num_classes, 0)
         
         # Storage for test samples visualization
         num_samples_to_visualize = min(8, self.config.training.batch_size if hasattr(self.config.training, 'batch_size') else 4)
@@ -276,7 +408,7 @@ class Trainer:
                 outputs = self.model(inputs)
                 outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
 
-                loss = self.criterion(outputs, targets)
+                loss = self.criterion_eval(outputs, targets)
                 
                 # Update metrics
                 loss_meter.update(loss.item(), inputs.size(0))
@@ -656,7 +788,8 @@ class Trainer:
             if 'encoder' in name and param.requires_grad:
                 encoder_params.append(param)
         
-        if encoder_params and not self.config.model.encoder.freeze:
+        if encoder_params:
+        # if encoder_params and not self.config.model.encoder.freeze:
             params.append({
                 'params': encoder_params,
                 'lr': opt_config.learning_rate * 0.1  # Lower LR for pretrained encoder
@@ -842,7 +975,7 @@ class Trainer:
                     # Also keep track of best loss
                     if val_metrics.get('val_loss', float('inf')) < self.best_val_loss and epoch != self.best_epoch:
                         self.best_val_loss = val_metrics.get('val_loss', float('inf'))
-            
+
             # Update learning rate scheduler
             if self.scheduler is not None:
                 if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -1088,7 +1221,7 @@ class Trainer:
                 outputs = self.model(inputs)
                 outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
 
-                loss = self.criterion(outputs, targets)
+                loss = self.criterion_eval(outputs, targets)
                 
                 # Update metrics
                 loss_meter.update(loss.item(), inputs.size(0))
@@ -1312,7 +1445,16 @@ class Trainer:
                 self.writer.add_scalar('Metrics/mean_iou', metrics['mean_iou'], epoch)
                 self.writer.add_scalar('Metrics/fw_iou', metrics['fw_iou'], epoch)
                 
+                # Print detailed results
+                print(f"Validation Epoch: [{epoch + 1}]")
+                print(f"  Loss: {loss_meter.avg:.4f}")
+                print(f"  Pixel Accuracy: {metrics['pixel_accuracy']:.4f}")
+                print(f"  Mean Accuracy: {metrics['mean_accuracy']:.4f}")
+                print(f"  Mean IoU: {metrics['mean_iou']:.4f}")
+                print(f"  Freq Weighted IoU: {metrics['fw_iou']:.4f}")
+
                 # Log per-class IoU
+                print("  IoU per class:")
                 class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
                 for i, iou in enumerate(metrics['iou']):
                     class_name = class_names[i] if class_names and i < len(class_names) else f"Class {i}"
@@ -1479,7 +1621,6 @@ class Trainer:
         if False: ## Set to True to save all checkpoints for all epoches
             checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch + 1}.pth"
             torch.save(checkpoint, checkpoint_path)
-        
         # If this is the best model, create a copy
         if is_best:
             best_path = checkpoint_dir / "best_model.pth"
