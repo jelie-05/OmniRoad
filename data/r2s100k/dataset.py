@@ -63,9 +63,9 @@ class R2S100k(Dataset):
         if self.image_transform:
             image = self.image_transform(image)
 
-        if self.split != 'test':
-            if self.mask_transform:
-                mask = self.mask_transform(mask)
+        # if self.split != 'test':
+        if self.mask_transform:
+            mask = self.mask_transform(mask)
 
         # image = np.transpose(image, (2, 0, 1))
         mask = np.array(mask)

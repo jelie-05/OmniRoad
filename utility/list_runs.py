@@ -16,13 +16,13 @@ def list_runs(experiment_name, show_test=False):
         return
     
     print(f"Runs for experiment '{experiment_name}':")
-    print("-" * 120)
+    print("-" * 180)
     
     if show_test:
-        print(f"{'Run ID':<30} {'Date':<20} {'Val mIoU':<10} {'Test mIoU':<10} {'Test Acc':<10} {'Status':<10} {'Notes':<20}")
+        print(f"{'Run ID':<30} {'Encoder':<30} {'Decoder':<30} {'Date':<20} {'Val mIoU':<10} {'Test mIoU':<10} {'Test Acc':<10} {'Status':<20} {'Notes':<20}")
     else:
-        print(f"{'Run ID':<30} {'Date':<20} {'Best mIoU':<10} {'Status':<10} {'Notes':<20}")
-    print("-" * 120)
+        print(f"{'Run ID':<30} {'Encoder':<30} {'Decoder':<30} {'Date':<20} {'Best mIoU':<10} {'Status':<20} {'Notes':<20}")
+    print("-" * 180)
     
     for run_dir in sorted(experiment_dir.glob("run_*")):
         run_id = run_dir.name
@@ -36,6 +36,11 @@ def list_runs(experiment_name, show_test=False):
         
         # Get best validation metrics
         best_metrics_path = run_dir / "best_metrics.txt"
+        config = load_run_config(experiment_name, run_id)
+
+        encoder = config['model']['encoder']['name']
+        decoder = config['model']['decoder']['name']
+
         best_miou = "N/A"
         if best_metrics_path.exists():
             with open(best_metrics_path, 'r') as f:
@@ -85,11 +90,11 @@ def list_runs(experiment_name, show_test=False):
         
         # Print run info
         if show_test:
-            print(f"{run_id:<30} {date_str:<20} {best_miou:<10} {test_miou:<10} {test_acc:<10} {status:<10} {notes[:20]:<20}")
+            print(f"{run_id:<30} {encoder:<30} {decoder:<30} {date_str:<20} {best_miou:<10} {test_miou:<10} {test_acc:<10} {status:<20} {notes[:20]:<20}")
         else:
-            print(f"{run_id:<30} {date_str:<20} {best_miou:<10} {status:<10} {notes[:20]:<20}")
+            print(f"{run_id:<30} {encoder:<30} {decoder:<30} {date_str:<20} {best_miou:<10} {status:<20} {notes[:20]:<20}")
     
-    print("-" * 120)
+    print("-" * 180)
 
 def show_run_config(experiment_name, run_id):
     """Display configuration for a specific run."""

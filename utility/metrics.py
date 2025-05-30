@@ -119,19 +119,31 @@ class ConfusionMatrix:
         
         # Calculate relevant metrics
         h = self.mat.astype(np.float64)
-        
+
         # Accuracy: overall accuracy
+        if self.ignore_index < self.num_classes and self.ignore_index >= 0:
+            h = np.delete(self.mat, self.ignore_index, axis=0)
+            h = np.delete(h, self.ignore_index, axis=1)
         acc = np.diag(h).sum() / h.sum()
         
+        h = self.mat.astype(np.float64)
         # Accuracy per class and mean accuracy
         acc_per_class = np.diag(h) / h.sum(axis=1)
         acc_per_class = np.nan_to_num(acc_per_class)
-        mean_acc = acc_per_class.mean()
+
+        if self.ignore_index < self.num_classes and self.ignore_index >= 0:
+            mean_acc = np.delete(acc_per_class, 0, axis=0).mean()
+        else:
+            mean_acc = acc_per_class.mean()
+
         
         # IoU per class and mean IoU
         iou = np.diag(h) / (h.sum(axis=1) + h.sum(axis=0) - np.diag(h))
         iou = np.nan_to_num(iou)
-        mean_iou = iou.mean()
+        if self.ignore_index < self.num_classes and self.ignore_index >= 0:
+            mean_iou = np.delete(iou, 0, axis=0).mean()
+        else:
+            mean_iou = iou.mean()
         
         # Frequency-weighted IoU
         freq = h.sum(axis=1) / h.sum()

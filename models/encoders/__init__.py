@@ -7,11 +7,15 @@ from config.base import EncoderConfig
 from .base import BaseEncoder
 from .dinov1_wrapper import DinoViTWrapper
 from .dinov2_wrapper import Dinov2ViTWrapper
+from .clip_wrapper import CLIPViTWrapper
+
 
 # Registry of encoder implementations
 ENCODER_REGISTRY: Dict[str, Type[BaseEncoder]] = {
     'dino_vits8': DinoViTWrapper,
-    'dinov2_vits14': Dinov2ViTWrapper
+    'lora_dino_vits8': DinoViTWrapper,
+    'dinov2_vits14': Dinov2ViTWrapper,
+    'clip_vitb16': CLIPViTWrapper
 }
 
 def create_encoder(config: EncoderConfig) -> BaseEncoder:
@@ -30,4 +34,4 @@ def create_encoder(config: EncoderConfig) -> BaseEncoder:
     
     return encoder_class(config)
 
-__all__ = ['BaseEncoder', 'DinoViTWrapper', 'Dinov2ViTWrapper', 'create_encoder']
+__all__ = ['BaseEncoder', 'DinoViTWrapper', 'Dinov2ViTWrapper', 'CLIPViTWrapper', 'create_encoder']

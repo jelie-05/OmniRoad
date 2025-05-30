@@ -181,7 +181,8 @@ def main():
                 print("Model wrapped with DistributedDataParallel")
 
         # Get data loaders with distributed support
-        train_loader, val_loader, _ = get_data_loaders(
+        train_loader, _, val_loader = get_data_loaders(
+        # train_loader, val_loader, _ = get_data_loaders(
             config, 
             distributed=(world_size > 1),
             rank=rank,

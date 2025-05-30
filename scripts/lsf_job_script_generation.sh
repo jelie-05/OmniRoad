@@ -105,8 +105,8 @@ JOB_SCRIPT="$PROJECT_DIR/job_${JOB_NAME}_${GPUS}gpu.sh"
 cat > "$JOB_SCRIPT" << EOF
 #!/bin/bash
 #BSUB -J ${JOB_NAME}_${GPUS}gpu
-#BSUB -o ${LOG_DIR}/train_%J.log
-#BSUB -e ${LOG_DIR}/train_%J.log
+#BSUB -o ${LOG_DIR}/${EXPERIMENT}_${MODEL}_%J.log
+#BSUB -e ${LOG_DIR}/${EXPERIMENT}_${MODEL}_%J.log
 #BSUB -n ${CORES}
 #BSUB -q ${QUEUE}
 #BSUB -gpu "num=${GPUS}"
