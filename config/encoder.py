@@ -33,16 +33,10 @@ class LoRADinoViTS8Config(EncoderConfig):
     output_dim: int = 384
     patch_size: int = 8
     attention_heads: int = 6
-    lora: bool = True
-    r: int = 16
+    lora_r: int = 16
     lora_alpha: int = 32
-    enable_lora: List[bool] = field(default_factory=lambda: [True, False, True])
-    
-    def __post_init__(self):
-        self.name = "lora_dino_vits8"
-        self.output_dim = 384
-        self.patch_size = 8
-        self.attention_heads = 6
+    lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
 
 @EncoderRegistry.register("dinov2_vits14")
 @dataclass
@@ -85,4 +79,36 @@ class SwinV2TinyWindow8Config(EncoderConfig):
     name: str = "swinv2_tiny_window8_256"
     freeze: bool = True
     output_dim: List[int] = field(default_factory=lambda: [96, 192, 384, 768])
+
+@EncoderRegistry.register("lora_swinv2_tiny_window8_256")
+@dataclass
+class LoRASwinV2TinyWindow8Config(EncoderConfig):
+    """Configuration for LoRA SwinV2 Tiny Window 8 model."""
+    name: str = "lora_swinv2_tiny_window8_256"
+    freeze: bool = True
+    output_dim: List[int] = field(default_factory=lambda: [96, 192, 384, 768])
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, True, True])
+
+@EncoderRegistry.register("swinv2_small_window8_256")
+@dataclass
+class SwinV2SmallWindow8Config(EncoderConfig):
+    """Configuration for SwinV2 Small Window 8 model."""
+    name: str = "swinv2_small_window8_256"
+    freeze: bool = True
+    output_dim: List[int] = field(default_factory=lambda: [96, 192, 384, 768])
+
+@EncoderRegistry.register("lora_swinv2_small_window8_256")
+@dataclass
+class LoRASwinV2SmallWindow8Config(EncoderConfig):
+    """Configuration for LoRA SwinV2 Small Window 8 model."""
+    name: str = "lora_swinv2_small_window8_256"
+    freeze: bool = True
+    output_dim: List[int] = field(default_factory=lambda: [96, 192, 384, 768])
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, True, True])
 

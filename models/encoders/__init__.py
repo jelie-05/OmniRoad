@@ -22,6 +22,8 @@ ENCODER_REGISTRY: Dict[str, Type[BaseEncoder]] = {
     'swinv2_small_window16_256': SwinTransformerWrapper,
     'swinv2_base_window8_256': SwinTransformerWrapper,
     'swinv2_base_window16_256': SwinTransformerWrapper,
+    'lora_swinv2_tiny_window8_256': SwinTransformerWrapper,
+    'lora_swinv2_small_window8_256': SwinTransformerWrapper,
 }
 
 def create_encoder(config: EncoderConfig) -> BaseEncoder:

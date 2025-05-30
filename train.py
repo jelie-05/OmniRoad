@@ -161,7 +161,7 @@ def main():
         # Print model summary only on main process
         if is_main_process():
             try:
-                summary(model)
+                summary(model, depth=8)
                 print("Model created successfully!")
                 print(f"Encoder output dimension: {model.encoder.get_output_dim()}")
                 print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
