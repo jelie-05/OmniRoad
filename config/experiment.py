@@ -39,4 +39,8 @@ class SegmentationR2S100k(Config):
         self.model = ModelRegistry.get(self.model_name)()
         self.model.decoder.num_classes = self.data.num_classes
         self.data.input_size = self.model.input_size
+        if 'clip' in self.model.name:
+            print("CLIP is used, changing to its default mean and std for image_transform")
+            self.data.mean = [0.48145466, 0.4578275, 0.40821073]
+            self.data.std = [0.26862954, 0.26130258, 0.27577711]
         

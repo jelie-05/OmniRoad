@@ -2,6 +2,8 @@ import os
 import sys
 import torch
 torch.hub.set_dir('/home/phd_li/.cache/torch/hub')
+os.environ['HF_HOME'] = '/home/phd_li/.cache/huggingface'
+
 import argparse
 from pathlib import Path
 from torchinfo import summary

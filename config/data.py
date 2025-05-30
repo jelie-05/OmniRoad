@@ -29,7 +29,7 @@ class R2S100KConfig(DataConfig):
     prefetch_factor: int = 4
     drop_last: bool = True
 
-    ignore_index = 255
+    ignore_index = 0
     label_colors_list = [
             (0, 0, 0), # BG
             (2, 79, 59), # Wet_Road_Region
@@ -53,14 +53,28 @@ class R2S100KConfig(DataConfig):
     
     def get_transforms(self):
         """Get transforms based on configuration."""
-        image_transform = T.Compose([
-            T.Resize(self.input_size),
-            T.ToTensor(),
-            T.Normalize(mean=self.mean, std=self.std),
-        ])
-        
-        mask_transform = T.Compose([
-            T.Resize(self.input_size)
-        ])
+        try:
+            print("Input size: ", self.input_size)
+            print(f"Mean: {self.mean}, Std: {self.std}")
+            image_transform = T.Compose([ 
+                T.Resize(self.input_size),
+                T.ToTensor(),
+                T.Normalize(mean=self.mean, std=self.std),
+            ])
+            
+            mask_transform = T.Compose([
+                T.Resize(self.input_size)
+            ])
+        except:
+            print("Input size not specified, use (224, 224) ...")
+            image_transform = T.Compose([ 
+                T.Resize((224, 224)),
+                T.ToTensor(),
+                T.Normalize(mean=self.mean, std=self.std),
+            ])
+            
+            mask_transform = T.Compose([
+                T.Resize((224, 224))
+            ])
         
         return image_transform, mask_transform

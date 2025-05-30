@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch
 torch.hub.set_dir('/home/phd_li/.cache/torch/hub')
+os.environ['HF_HOME'] = '/home/phd_li/.cache/huggingface'
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -160,7 +161,7 @@ def main():
         # Print model summary only on main process
         if is_main_process():
             try:
-                summary(model)
+                summary(model, depth=8)
                 print("Model created successfully!")
                 print(f"Encoder output dimension: {model.encoder.get_output_dim()}")
                 print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
@@ -181,6 +182,7 @@ def main():
                 print("Model wrapped with DistributedDataParallel")
 
         # Get data loaders with distributed support
+        # train_loader, _, val_loader = get_data_loaders(
         train_loader, val_loader, _ = get_data_loaders(
             config, 
             distributed=(world_size > 1),

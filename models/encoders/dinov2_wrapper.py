@@ -7,13 +7,16 @@ class Dinov2ViTWrapper(BaseEncoder):
         super().__init__(config)
 
         try:
-            self.encoder = torch.hub.load('facebookresearch/dinov2', config.name)
+            self.encoder = torch.hub.load('facebookresearch/dinov2', config.name if 'lora' not in config.name else config.name.replace("lora_", ""))
         except Exception as e:
-            raise RuntimeError(f"Failed to load DINOv2 model {config.name}: {e}")
+            raise RuntimeError(f"Failed to load DINOv2 model {config.name if 'lora' not in config.name else config.name.replace('lora_', '')}: {e}")
         
-        if config.freeze:
-            for param in self.encoder.parameters():
-                param.requires_grad = False
+        if 'lora' in config.name:
+            self._apply_lora(lora_r=config.lora_r, lora_alpha=config.lora_alpha, lora_target=config.lora_target, lora_qkv_enable=config.lora_qkv_enable)
+        else:
+            if config.freeze:
+                for param in self.encoder.parameters():
+                    param.requires_grad = False
 
         assert self.config.patch_size == self.encoder.patch_size, f"patch_size ({self.config.patch_size}) in config doesn't match the patch_size ({self.encoder.patch_size}) of the selected backbone"
         assert self.config.output_dim == self.encoder.embed_dim, f"output_dim ({self.config.output_dim}) in config doesn't match the embed_dim ({self.encoder.embed_dim}) of the selected backbone"
