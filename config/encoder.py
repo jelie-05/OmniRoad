@@ -17,12 +17,6 @@ class DinoViTS8Config(EncoderConfig):
     output_dim: int = 384
     patch_size: int = 8
     attention_heads: int = 6
-    
-    def __post_init__(self):
-        self.name = "dino_vits8"
-        self.output_dim = 384
-        self.patch_size = 8
-        self.attention_heads = 6
 
 @EncoderRegistry.register("lora_dino_vits8")
 @dataclass
@@ -47,14 +41,21 @@ class Dinov2ViTS14Config(EncoderConfig):
     output_dim: int = 384
     patch_size: int = 14
     attention_heads: int = 6
-
-    def __post_init__(self):
-        # Ensure name is correct
-        self.name = "dinov2_vits14"
-        self.output_dim = 384
-        self.patch_size = 14
-        self.attention_heads = 6
-
+    
+@EncoderRegistry.register("lora_dinov2_vits14")
+@dataclass
+class LoRADinov2ViTS14Config(EncoderConfig):
+    """Configuration for LoRA DINOv2 ViT-S/14 model."""
+    name: str = "lora_dinov2_vits14"
+    freeze: bool = True
+    output_dim: int = 384
+    patch_size: int = 14
+    attention_heads: int = 6
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
+    
 @EncoderRegistry.register("clip_vitb16")
 @dataclass
 class CLIPViTB16Config(EncoderConfig):
@@ -64,13 +65,6 @@ class CLIPViTB16Config(EncoderConfig):
     output_dim: int = 768
     patch_size: int = 16
     attention_heads: int = 12
-
-    def __post_init__(self):
-        # Ensure name is correct
-        self.name = "clip_vitb16"
-        self.output_dim = 768
-        self.patch_size = 16
-        self.attention_heads = 12
 
 @EncoderRegistry.register("swinv2_tiny_window8_256")
 @dataclass
@@ -107,6 +101,26 @@ class LoRASwinV2SmallWindow8Config(EncoderConfig):
     name: str = "lora_swinv2_small_window8_256"
     freeze: bool = True
     output_dim: List[int] = field(default_factory=lambda: [96, 192, 384, 768])
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, True, True])
+
+@EncoderRegistry.register("swinv2_base_window8_256")
+@dataclass
+class SwinV2BaseWindow8Config(EncoderConfig):
+    """Configuration for SwinV2 Base Window 8 model."""
+    name: str = "swinv2_base_window8_256"
+    freeze: bool = True
+    output_dim: List[int] = field(default_factory=lambda: [128, 256, 512, 1024])
+
+@EncoderRegistry.register("lora_swinv2_base_window8_256")
+@dataclass
+class LoRASwinV2BaseWindow8Config(EncoderConfig):
+    """Configuration for LoRA SwinV2 Base Window 8 model."""
+    name: str = "lora_swinv2_base_window8_256"
+    freeze: bool = True
+    output_dim: List[int] = field(default_factory=lambda: [128, 256, 512, 1024])
     lora_r: int = 16
     lora_alpha: int = 32
     lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])

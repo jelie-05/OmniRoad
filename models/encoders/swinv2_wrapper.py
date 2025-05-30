@@ -1,8 +1,6 @@
-import torch
 from config.base import EncoderConfig
 from .base import BaseEncoder
 import timm
-from typing import List
 
 class SwinTransformerWrapper(BaseEncoder):
     def __init__(self, config: EncoderConfig):

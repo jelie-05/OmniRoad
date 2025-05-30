@@ -15,6 +15,7 @@ ENCODER_REGISTRY: Dict[str, Type[BaseEncoder]] = {
     'dino_vits8': DinoViTWrapper,
     'lora_dino_vits8': DinoViTWrapper,
     'dinov2_vits14': Dinov2ViTWrapper,
+    'lora_dinov2_vits14': Dinov2ViTWrapper,
     'clip_vitb16': CLIPViTWrapper,
     'swinv2_tiny_window8_256': SwinTransformerWrapper,
     'swinv2_tiny_window16_256': SwinTransformerWrapper,
@@ -24,6 +25,7 @@ ENCODER_REGISTRY: Dict[str, Type[BaseEncoder]] = {
     'swinv2_base_window16_256': SwinTransformerWrapper,
     'lora_swinv2_tiny_window8_256': SwinTransformerWrapper,
     'lora_swinv2_small_window8_256': SwinTransformerWrapper,
+    'lora_swinv2_base_window8_256': SwinTransformerWrapper,
 }
 
 def create_encoder(config: EncoderConfig) -> BaseEncoder:

@@ -58,6 +58,23 @@ class Dinov2ViTS14LinearProbingConfig(ModelConfig):
         # Ensure decoder input_dim matches encoder output_dim
         self.decoder.input_dim = self.encoder.output_dim
 
+@ModelRegistry.register("lora_dinov2_vits14-linear_probing")
+@dataclass
+class LoRADinov2ViTS14LinearProbingConfig(ModelConfig):
+    name: str = 'lora_dinov2_vits14-linear_probing'
+    input_size: Tuple[int, int] = (392, 392) ## So that the output spatial size from the encoder is still (28, 28)
+
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("lora_dinov2_vits14")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("linear_probing")()
+    )
+    
+    def __post_init__(self):
+        # Ensure decoder input_dim matches encoder output_dim
+        self.decoder.input_dim = self.encoder.output_dim
+
 @ModelRegistry.register("dinov2_vits14_px224-linear_probing")
 @dataclass
 class Dinov2ViTS14Px224LinearProbingConfig(ModelConfig):
@@ -66,6 +83,23 @@ class Dinov2ViTS14Px224LinearProbingConfig(ModelConfig):
 
     encoder: EncoderConfig = field(
         default_factory=lambda: EncoderRegistry.get("dinov2_vits14")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("linear_probing")()
+    )
+    
+    def __post_init__(self):
+        # Ensure decoder input_dim matches encoder output_dim
+        self.decoder.input_dim = self.encoder.output_dim
+
+@ModelRegistry.register("lora_dinov2_vits14_px224-linear_probing")
+@dataclass
+class LoRADinov2ViTS14Px224LinearProbingConfig(ModelConfig):
+    name: str = 'lora_dinov2_vits14_px224-linear_probing'
+    input_size: Tuple[int, int] = (224, 224) ## So that the output spatial size from the encoder is still (28, 28)
+
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("lora_dinov2_vits14")()
     )
     decoder: DecoderConfig = field(
         default_factory=lambda: DecoderRegistry.get("linear_probing")()
@@ -225,6 +259,42 @@ class LoRASwinV2SmallWindow8SegFormerHeadConfig(ModelConfig):
     input_size: Tuple[int, int] = (256, 256)
     encoder: EncoderConfig = field(
         default_factory=lambda: EncoderRegistry.get("lora_swinv2_small_window8_256")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("segformer_head")()
+    )
+    
+    def __post_init__(self):
+        # Ensure decoder input_dim matches encoder output_dim
+        self.decoder.in_channels = self.encoder.output_dim
+        self.decoder.input_dim = self.encoder.output_dim
+        self.decoder.encoder_name = self.encoder.name
+
+@ModelRegistry.register("swinv2_base_window8_256-segformer_head")
+@dataclass
+class SwinV2BaseWindow8SegFormerHeadConfig(ModelConfig):
+    name: str = 'swinv2_base_window8_256-segformer_head'
+    input_size: Tuple[int, int] = (256, 256)
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("swinv2_base_window8_256")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("segformer_head")()
+    )
+    
+    def __post_init__(self):
+        # Ensure decoder input_dim matches encoder output_dim
+        self.decoder.in_channels = self.encoder.output_dim
+        self.decoder.input_dim = self.encoder.output_dim
+        self.decoder.encoder_name = self.encoder.name
+
+@ModelRegistry.register("lora_swinv2_base_window8_256-segformer_head")
+@dataclass
+class LoRASwinV2BaseWindow8SegFormerHeadConfig(ModelConfig):
+    name: str = 'lora_swinv2_base_window8_256-segformer_head'
+    input_size: Tuple[int, int] = (256, 256)
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("lora_swinv2_base_window8_256")()
     )
     decoder: DecoderConfig = field(
         default_factory=lambda: DecoderRegistry.get("segformer_head")()
