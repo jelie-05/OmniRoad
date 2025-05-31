@@ -13,6 +13,7 @@ class Dinov2ViTWrapper(BaseEncoder):
         
         if 'lora' in config.name:
             self._apply_lora(lora_r=config.lora_r, lora_alpha=config.lora_alpha, lora_target=config.lora_target, lora_qkv_enable=config.lora_qkv_enable)
+            # self._apply_lora(lora_r=config.lora_r, lora_alpha=config.lora_alpha, lora_target=config.lora_target)
         else:
             if config.freeze:
                 for param in self.encoder.parameters():

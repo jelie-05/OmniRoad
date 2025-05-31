@@ -30,6 +30,7 @@ class BaseEncoder(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement forward")
     
+    # def _apply_lora(self, lora_r: int, lora_alpha: float, lora_target: List[str]):
     def _apply_lora(self, lora_r: int, lora_alpha: float, lora_target: List[str], lora_qkv_enable: List[bool] = [True, True, True]):
         """Apply LoRA to specific modules in the model using loralib."""
         lora_counter = 0
@@ -67,6 +68,13 @@ class BaseEncoder(nn.Module):
                         lora_alpha=lora_alpha,
                         bias=bias,
                     )
+                # lora_layer = lora.Linear(
+                #     in_features=in_features,
+                #     out_features=out_features,
+                #     r=lora_r,
+                #     lora_alpha=lora_alpha,
+                #     bias=bias,
+                # )
                     
                 # Copy original weights
                 lora_layer.weight.data.copy_(original.weight.data)
