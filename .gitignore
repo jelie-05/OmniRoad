@@ -6,3 +6,4 @@ logs/
 *.sh
 !lsf_job_script_generation.sh
 !lsf_single_node.sh
+.code-workspace.code-workspace

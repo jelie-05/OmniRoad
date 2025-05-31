@@ -84,7 +84,7 @@ class LoRASwinV2TinyWindow8Config(EncoderConfig):
     lora_r: int = 16
     lora_alpha: int = 32
     lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
-    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, True, True])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
 
 @EncoderRegistry.register("swinv2_small_window8_256")
 @dataclass
@@ -104,7 +104,7 @@ class LoRASwinV2SmallWindow8Config(EncoderConfig):
     lora_r: int = 16
     lora_alpha: int = 32
     lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
-    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, True, True])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
 
 @EncoderRegistry.register("swinv2_base_window8_256")
 @dataclass
@@ -124,5 +124,5 @@ class LoRASwinV2BaseWindow8Config(EncoderConfig):
     lora_r: int = 16
     lora_alpha: int = 32
     lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
-    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, True, True])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
 

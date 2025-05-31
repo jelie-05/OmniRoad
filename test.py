@@ -128,7 +128,7 @@ def main():
     try:
         # Load configuration
         config = load_config_for_testing(args)
-        
+        config.model.encoder.name = config.model.encoder.name.replace('lora_', '') if 'lora' in config.model.encoder.name else config.model.encoder.name
         # Set random seeds for reproducibility
         init_seeds(config.seed, rank)
         

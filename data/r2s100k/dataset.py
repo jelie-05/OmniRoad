@@ -4,6 +4,7 @@ import glob
 import numpy as np
 from PIL import Image
 import torch 
+import torchvision.transforms as T
 
 class R2S100k(Dataset):
     def __init__(self, image_base: str, seg_base: str, image_transform, mask_transform, label_colors_list, class_names, split):
@@ -21,6 +22,10 @@ class R2S100k(Dataset):
         self.mask_transform = mask_transform
         self.class_values = [self.class_names.index(cls.lower()) for cls in self.class_names]
         self.split = split
+
+        self.test_mask_transform = T.Compose([ 
+                T.Resize((144, 256)) ## From R2S100K Repo
+            ])
 
     def __len__(self):
         return len(self.image_paths)
@@ -63,9 +68,11 @@ class R2S100k(Dataset):
         if self.image_transform:
             image = self.image_transform(image)
 
-        # if self.split != 'test':
-        if self.mask_transform:
-            mask = self.mask_transform(mask)
+        if self.split == 'test':
+            mask = self.test_mask_transform(mask)
+        else:
+            if self.mask_transform:
+                mask = self.mask_transform(mask)
 
         # image = np.transpose(image, (2, 0, 1))
         mask = np.array(mask)

@@ -238,7 +238,7 @@ class Trainer:
             'test_metrics': test_metrics,
             'test_time': test_time
         }
-    
+        
     def batch_pix_accuracy(self, predict, target, labeled):
         pixel_labeled = labeled.sum()
         pixel_correct = ((predict == target) * labeled).sum()
@@ -684,9 +684,9 @@ class Trainer:
             # Load model state
             if hasattr(self.model, 'module'):
                 # DDP model
-                self.model.module.load_state_dict(checkpoint['model_state_dict'])
+                self.model.module.load_state_dict(checkpoint['model_state_dict'], strict=False)
             else:
-                self.model.load_state_dict(checkpoint['model_state_dict'])
+                self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
             
             # Load optimizer and scheduler state only if training
             if self.optimizer is not None:
