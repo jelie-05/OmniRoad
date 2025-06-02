@@ -49,6 +49,10 @@ class TrainingConfig:
     batch_size: int = -1
     epochs: int = -1
 
+    use_amp: bool = False
+    grad_clip_val: Optional[float] = 1.0 
+    loss_scale: float = 2**16 
+
 @dataclass
 class DataConfig:
     """Base configuration for data."""

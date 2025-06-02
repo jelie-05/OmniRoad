@@ -21,6 +21,8 @@ class SegmentationR2S100k(Config):
         default_factory=lambda: TrainingConfig(
             batch_size=16,
             epochs=100,
+            use_amp=False,
+            grad_clip_val=1.0,
             optimizer=OptimizerConfig(
                 name="adamw",
                 learning_rate=0.001,
