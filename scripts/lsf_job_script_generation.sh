@@ -13,6 +13,9 @@ BATCH_SIZE=128
 NUM_WORKERS=8
 QUEUE="gpu"
 JOB_NAME="mt-vfmseg"
+FREEZE=true  
+USE_AMP=false
+GRAD_CLIP=""
 
 # Script paths
 PROJECT_DIR="/home/phd_li/git_repo/MT-DinoSeg"
@@ -57,6 +60,18 @@ while [[ $# -gt 0 ]]; do
             JOB_NAME="$2"
             shift 2
             ;;
+        --no-freeze)
+            FREEZE=false
+            shift
+            ;;
+        --use-amp|--enable-amp)
+            USE_AMP=true
+            shift
+            ;;
+        --grad-clip)
+            GRAD_CLIP="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
@@ -69,6 +84,12 @@ while [[ $# -gt 0 ]]; do
             echo "  --num-workers      Number of workers (default: $NUM_WORKERS)"
             echo "  -q, --queue        LSF queue (default: $QUEUE)"
             echo "  -j, --job-name     Job name (default: $JOB_NAME)"
+            echo ""
+            echo "Training Options:"
+            echo "  --no-freeze        Don't freeze encoder weights (default)"
+            echo "  --use-amp          Enable mixed precision training"
+            echo "  --grad-clip VALUE  Gradient clipping value (e.g., 1.0)"
+            echo ""
             echo "  -h, --help         Show this help"
             exit 0
             ;;
@@ -94,6 +115,13 @@ fi
 CORES_PER_GPU=$((CORES / GPUS))
 if [ $CORES_PER_GPU -lt 4 ]; then
     echo "Warning: Only $CORES_PER_GPU cores per GPU. Consider increasing total cores."
+fi
+
+if [ "$USE_AMP" = true ]; then
+    echo "Mixed Precision enabled - you can use larger batch sizes!"
+    if [ $BATCH_SIZE -lt 32 ]; then
+        echo "   💡 Tip: Consider increasing batch size (current: $BATCH_SIZE, suggested: 32+)"
+    fi
 fi
 
 # Create log directory if it doesn't exist
@@ -125,6 +153,9 @@ echo "CPUs: ${CORES}"
 echo "GPUs: ${GPUS}"
 echo "Experiment: ${EXPERIMENT}"
 echo "Model: ${MODEL}"
+echo "Mixed Precision: ${USE_AMP}"
+echo "Freeze Encoder: ${FREEZE}"
+$(if [ -n "$GRAD_CLIP" ]; then echo "echo \"Gradient Clipping: ${GRAD_CLIP}\""; fi)
 echo ""
 
 echo "Available GPUs:"
@@ -142,27 +173,31 @@ cd ${PROJECT_DIR}
 # Set up environment
 export CUDA_VISIBLE_DEVICES=\$(nvidia-smi --list-gpus | wc -l | awk '{for(i=0;i<\$1;i++) printf i (i<\$1-1 ? "," : "")}')
 
+TRAIN_CMD="train.py \\\\
+    --experiment ${EXPERIMENT} \\\\
+    --model_name ${MODEL} \\\\
+    --epochs ${EPOCHS} \\\\
+    --batch_size ${BATCH_SIZE} \\\\
+    --num_workers ${NUM_WORKERS}"
+
+# Add optional flags
+$(if [ "$FREEZE" = false ]; then echo "TRAIN_CMD=\"\$TRAIN_CMD --train_backbone\""; fi)
+$(if [ "$USE_AMP" = true ]; then echo "TRAIN_CMD=\"\$TRAIN_CMD --use_amp\""; fi)
+$(if [ -n "$GRAD_CLIP" ]; then echo "TRAIN_CMD=\"\$TRAIN_CMD --grad_clip ${GRAD_CLIP}\""; fi)
+
 # Run training
 if [ ${GPUS} -eq 1 ]; then
     echo "Running single GPU training..."
-    python train.py \\
-        --experiment ${EXPERIMENT} \\
-        --model_name ${MODEL} \\
-        --epochs ${EPOCHS} \\
-        --batch_size ${BATCH_SIZE} \\
-        --num_workers ${NUM_WORKERS}
+    echo "Command: python \$TRAIN_CMD"
+    echo ""
+    eval "python \$TRAIN_CMD"
 else
     echo "Running multi-GPU training with \$NPROC_PER_NODE GPUs..."
-    torchrun \\
-        --standalone \\
-        --nproc-per-node=\$NPROC_PER_NODE \\
-        train.py \\
-        --experiment ${EXPERIMENT} \\
-        --model_name ${MODEL} \\
-        --epochs ${EPOCHS} \\
-        --batch_size ${BATCH_SIZE} \\
-        --num_workers ${NUM_WORKERS}
+    echo "Command: torchrun --standalone --nproc-per-node=\$NPROC_PER_NODE \$TRAIN_CMD"
+    echo ""
+    eval "torchrun --standalone --nproc-per-node=\$NPROC_PER_NODE \$TRAIN_CMD"
 fi
+
 
 echo ""
 echo "Training completed at \$(date)"
@@ -182,6 +217,11 @@ echo "  Experiment: $EXPERIMENT"
 echo "  Model: $MODEL"
 echo "  Epochs: $EPOCHS"
 echo "  Batch Size: $BATCH_SIZE"
+echo "  Mixed Precision: $USE_AMP"
+echo "  Freeze Encoder: $FREEZE"
+if [ -n "$GRAD_CLIP" ]; then
+    echo "  Gradient Clipping: $GRAD_CLIP"
+fi
 echo ""
 
 bsub < "$JOB_SCRIPT"

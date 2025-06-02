@@ -70,11 +70,15 @@ def parse_args():
     parser.add_argument("--learning_rate", type=float, help="Override learning rate")
     parser.add_argument("--num_workers", type=int, help="Override number of workers")
     parser.add_argument("--batch_size", type=int, help="Override batch size")
-    parser.add_argument("--freeze", action="store_true", help="Freeze encoder")
+    parser.add_argument("--train_backbone", action="store_true", help="Freeze encoder")
     parser.add_argument("--epochs", type=int, help="Override number of epochs")
     parser.add_argument("--run_id", type=str, 
                         help="Unique run identifier. If not provided, timestamp will be used.")
 
+    parser.add_argument("--use_amp", action="store_true", 
+                        help="Enable Automatic Mixed Precision training")
+    parser.add_argument("--grad_clip", type=float, 
+                        help="Gradient clipping value (recommended: 1.0)")
     args = parser.parse_args()
     
     # List available experiments if requested
@@ -158,11 +162,14 @@ def load_config_from_args() -> Config:
         config.training.batch_size = args.batch_size
     if args.epochs is not None:
         config.training.epochs = args.epochs
-    if args.freeze:
-        config.model.encoder.freeze = True
+    if args.train_backbone:
+        config.model.encoder.freeze = False
     if args.num_workers:
         config.data.num_workers = args.num_workers
-    # if args.run_id:
-    #     config.run_id = args.run_id
-    
+    if args.use_amp:
+        config.training.use_amp = True
+        print("Mixed Precision enabled via command line")
+    if args.grad_clip is not None:
+        config.training.grad_clip_val = args.grad_clip
+        print(f"Gradient clipping set to {args.grad_clip}")
     return config, args

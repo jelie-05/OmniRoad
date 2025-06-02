@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 import yaml
 import datetime
-import uuid
+from torch.cuda.amp import autocast, GradScaler
 
 from config.base import Config
 from utility.metrics import AverageMeter, ConfusionMatrix
@@ -80,6 +80,14 @@ class Trainer:
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.device = device
 
+        self.use_amp = getattr(self.config.training, 'use_amp', False)
+        self.scaler = GradScaler() if self.use_amp and torch.cuda.is_available() else None
+        
+        if is_main_process() and self.use_amp:
+            print(f"Using Automatic Mixed Precision (AMP)")
+            if not torch.cuda.is_available():
+                print("Warning: AMP enabled but CUDA not available, falling back to FP32")
+        
         # Create base experiment directory (only on main process)
         if is_main_process():
             self.experiment_dir = Path(f"outputs/{config.experiment_name}")
@@ -696,6 +704,11 @@ class Trainer:
                 # Load scheduler state if available
                 if 'scheduler_state_dict' in checkpoint and self.scheduler:
                     self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+            if self.use_amp and self.scaler is not None and 'scaler_state_dict' in checkpoint:
+                self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
+                if is_main_process():
+                    print(f"Restored AMP scaler state (scale: {self.scaler.get_scale()})")
             
             # Load training progress
             self.start_epoch = checkpoint.get('epoch', 0)
@@ -711,7 +724,9 @@ class Trainer:
             if is_main_process():
                 print(f"Resumed from epoch {self.start_epoch}")
                 print(f"Best validation mIoU so far: {self.best_miou:.4f} (epoch {self.best_epoch + 1})")
-            
+                amp_status = "Enabled" if self.use_amp else "Disabled"
+                print(f"Mixed Precision: {amp_status}")
+
         except Exception as e:
             if is_main_process():
                 print(f"Error loading checkpoint: {e}")
@@ -1061,22 +1076,49 @@ class Trainer:
             # Zero gradients
             self.optimizer.zero_grad()
             
-            # Standard precision training
-            outputs = self.model(inputs)
-            outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
+            if self.use_amp and self.scaler is not None:
+                # Mixed precision training
+                with autocast():
+                    outputs = self.model(inputs)
+                    outputs = torch.nn.functional.interpolate(
+                        outputs, size=targets.shape[1:], 
+                        mode="bilinear", align_corners=False
+                    )
+                    loss = self.criterion(outputs, targets)
+                
+                # Scale loss to prevent gradient underflow
+                scaled_loss = self.scaler.scale(loss)
+                scaled_loss.backward()
+                
+                # Gradient clipping (if configured)
+                if hasattr(self.config.training, 'grad_clip_val') and self.config.training.grad_clip_val:
+                    # Unscale before clipping to get true gradient norms
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), 
+                        self.config.training.grad_clip_val
+                    )
+                
+                # Update weights
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                # Standard precision training
+                outputs = self.model(inputs)
+                outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
 
-            loss = self.criterion(outputs, targets)
-            loss.backward()
-            
-            # Gradient clipping if configured
-            if hasattr(self.config.training, 'grad_clip_val') and self.config.training.grad_clip_val:
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), 
-                    self.config.training.grad_clip_val
-                )
-            
-            # Update weights
-            self.optimizer.step()
+                loss = self.criterion(outputs, targets)
+                loss.backward()
+                
+                # Gradient clipping if configured
+                if hasattr(self.config.training, 'grad_clip_val') and self.config.training.grad_clip_val:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), 
+                        self.config.training.grad_clip_val
+                    )
+                
+                # Update weights
+                self.optimizer.step()
             
             # Update metrics
             loss_meter.update(loss.item(), inputs.size(0))
@@ -1092,13 +1134,17 @@ class Trainer:
                 # Log learning rate
                 current_lr = self.optimizer.param_groups[0]['lr']
                 self.writer.add_scalar('Learning_Rate', current_lr, global_step)
-            
+
+                if self.use_amp and self.scaler is not None:
+                    self.writer.add_scalar('AMP/loss_scale', self.scaler.get_scale(), global_step)
             # Update progress bar only on main process
             if is_main_process():
                 monitor = {
                     'Loss': f'{loss_meter.val:.4f} ({loss_meter.avg:.4f})',
                     'CUDA': f'{cuda_mem.val:.2f} ({cuda_mem.avg:.2f})'
                 }
+                if self.use_amp and self.scaler is not None:
+                    monitor['Scale'] = f'{self.scaler.get_scale():.0f}'
                 pbar.set_postfix(monitor)
 
             start = time.time()
@@ -1607,12 +1653,16 @@ class Trainer:
             'best_metrics': self.best_metrics,
             'config': self.config,
             'metrics_history': self.metrics_history,
+            'use_amp': self.use_amp,
         }
         
         # Add scheduler state if available
         if self.scheduler:
             checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
-        
+
+        if self.use_amp and self.scaler is not None:
+            checkpoint['scaler_state_dict'] = self.scaler.state_dict()
+
         # Add current metrics if provided
         if metrics:
             checkpoint['current_metrics'] = metrics
@@ -1634,6 +1684,7 @@ class Trainer:
                     f.write(f"Best model (epoch {epoch + 1}):\n")
                     for k, v in metrics.items():
                         f.write(f"{k}: {v}\n")
+                    f.write(f"use_amp: {self.use_amp}\n")
         
         # Save latest checkpoint (for easy resuming)
         latest_path = checkpoint_dir / "latest.pth"
