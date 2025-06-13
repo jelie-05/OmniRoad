@@ -794,6 +794,8 @@ class Trainer:
         """Create optimizer based on configuration."""
         opt_config = self.config.training.optimizer
         
+        effective_batch_size = self.config.training.batch_size * self.world_size
+        lr_scale = effective_batch_size / self.config.training.batch_size
         # Get model parameters with separate learning rates for encoder and decoder
         params = []
         
@@ -807,7 +809,7 @@ class Trainer:
         # if encoder_params and not self.config.model.encoder.freeze:
             params.append({
                 'params': encoder_params,
-                'lr': opt_config.learning_rate * 0.1  # Lower LR for pretrained encoder
+                'lr': opt_config.learning_rate * lr_scale * 0.1  # Lower LR for pretrained encoder
             })
         
         # Add decoder parameters
@@ -819,7 +821,7 @@ class Trainer:
         if decoder_params:
             params.append({
                 'params': decoder_params,
-                'lr': opt_config.learning_rate
+                'lr': opt_config.learning_rate * lr_scale
             })
         
         # Create optimizer

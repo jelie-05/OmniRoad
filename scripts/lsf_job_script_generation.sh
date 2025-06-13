@@ -138,7 +138,7 @@ cat > "$JOB_SCRIPT" << EOF
 #BSUB -n ${CORES}
 #BSUB -q ${QUEUE}
 #BSUB -gpu "num=${GPUS}"
-#BSUB -R "select[ui==aiml_python && osrel==70 && type==X64LIN]"
+#BSUB -R "select[type==X64LIN]"
 
 # Configuration
 MASTER_PORT=\$((29500 + LSB_JOBID % 1000))
