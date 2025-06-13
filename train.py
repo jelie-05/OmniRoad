@@ -175,7 +175,7 @@ def main():
             model = DDP(
                 model, 
                 device_ids=[local_rank] if torch.cuda.is_available() else None,
-                find_unused_parameters=False,  # All parameters are used
+                find_unused_parameters=True,  # All parameters are used
                 gradient_as_bucket_view=True   # Optimize gradient memory layout
             )
             if is_main_process():
