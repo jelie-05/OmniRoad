@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from .base import DecoderConfig
 from .registry import ConfigRegistry
+from .base import ShapeSpec
 
 # Create a registry for probing head configurations
 DecoderRegistry = ConfigRegistry[DecoderConfig]("DecoderRegistry")
@@ -14,10 +15,36 @@ class Mask2FormerHeadConfig(DecoderConfig):
     name: str = 'mask2former_head'
     input_dim: int = -1
     num_classes: int = -1
-    in_channels: List[int] = field(default_factory=lambda: [384, 384, 384, 384])
-    embed_dim: int = 512
-    encoder_name: str = None
-    dropout: float = 0.1
+    # Input shape information (will be set automatically)
+    input_shape: Dict[str, ShapeSpec] = field(default_factory=dict)
+    
+    # Pixel decoder configuration
+    conv_dim: int = 256
+    mask_dim: int = 256
+    norm: str = "GN"  # GroupNorm
+    
+    # Deformable transformer pixel decoder config
+    transformer_dropout: float = 0.0
+    transformer_nheads: int = 8
+    transformer_dim_feedforward: int = 1024
+    transformer_enc_layers: int = 6
+    transformer_in_features: List[str] = field(default_factory=lambda: ["res2", "res3", "res4", "res5"])
+    common_stride: int = 4
+    
+    # Transformer decoder config
+    maskformer_hidden_dim: int = 256
+    num_obj_queries: int = 100
+    maskformer_nheads: int = 8
+    maskformer_dim_feedforward: int = 2048
+    dec_layers: int = 9
+    pre_norm: bool = False
+    enforce_input_project: bool = False
+    
+    # Input feature selection for transformer
+    maskformer_in_feature: str = "multi_scale_pixel_decoder"  # or "transformer_encoder", "pixel_embedding"
+    
+    # Training specific
+    mask_classification: bool = True
 
 @DecoderRegistry.register("segformer_head")
 @dataclass

@@ -66,6 +66,14 @@ class DataConfig:
     pin_memory: bool = True
 
 @dataclass
+class ShapeSpec:
+    """Simple dataclass to represent feature map shapes, replacing detectron2's ShapeSpec"""
+    channels: int
+    height: int = None
+    width: int = None
+    stride: int = None
+    
+@dataclass
 class Config:
     """Base configuration class."""
     experiment_name: str

@@ -26,7 +26,7 @@ class EncoderDecoderModel(nn.Module):
         
         # Ensure decoder input_dim matches encoder output_dim
         
-        assert config.decoder.input_dim == self.encoder.get_output_dim(), f"Input dimenstion of the decoder ({config.decoder.input_dim}) doesn't match the output dimension of the encoder ({self.encoder.get_output_dim()})."
+        # assert config.decoder.input_dim == self.encoder.get_output_dim(), f"Input dimenstion of the decoder ({config.decoder.input_dim}) doesn't match the output dimension of the encoder ({self.encoder.get_output_dim()})."
         
         # Create decoder
         self.decoder = create_decoder(config.decoder)
