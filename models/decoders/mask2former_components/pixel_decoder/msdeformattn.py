@@ -2,7 +2,7 @@
 import logging
 import numpy as np
 from typing import Callable, Dict, List, Optional, Tuple, Union
-
+import warnings
 import fvcore.nn.weight_init as weight_init
 import torch
 from torch import nn
@@ -12,243 +12,336 @@ from torch.cuda.amp import autocast
 
 # from detectron2.config import configurable
 # from detectron2.layers import Conv2d, ShapeSpec, get_norm
+from config import ShapeSpec
 # from detectron2.modeling import SEM_SEG_HEADS_REGISTRY
 
 from ..transformer_decoder.position_encoding import PositionEmbeddingSine
 from ..transformer_decoder.transformer import _get_clones, _get_activation_fn
 from .ops.modules import MSDeformAttn
 
-class Conv2d(nn.Module):
+def get_norm(norm: str, out_channels: int) -> nn.Module:
     """
-    Enhanced Conv2d layer that combines convolution, normalization, and activation.
+    Create a normalization layer.
     
-    This implementation provides detectron2-like functionality while being completely
-    self-contained and adaptable to your specific needs. Think of it as a "smart"
-    convolution layer that handles all the common patterns you need in modern
-    computer vision models.
+    This function mimics detectron2's get_norm but works independently.
+    It's crucial for Mask2Former because different normalization strategies
+    can significantly impact training stability and performance.
     
-    The key insight is that most conv layers in modern architectures follow the
-    same pattern: Conv -> Norm -> Activation. By bundling these together, we can
-    ensure consistency, reduce boilerplate code, and make architectural changes
-    easier to implement.
+    Args:
+        norm: Type of normalization ("BN", "GN", "LN", etc.)
+        out_channels: Number of output channels
+        
+    Returns:
+        Appropriate normalization layer
     """
+    if norm == "BN":
+        return nn.BatchNorm2d(out_channels)
+    elif norm == "GN":
+        # GroupNorm with 32 groups is a common choice
+        # It's more stable than BatchNorm for small batch sizes
+        num_groups = min(32, out_channels)
+        # Ensure divisibility
+        while out_channels % num_groups != 0 and num_groups > 1:
+            num_groups -= 1
+        return nn.GroupNorm(num_groups, out_channels)
+    elif norm == "LN":
+        # LayerNorm implemented as GroupNorm with 1 group
+        return nn.GroupNorm(1, out_channels)
+    elif norm == "" or norm is None:
+        return nn.Identity()
+    else:
+        raise ValueError(f"Unsupported norm type: {norm}")
+        
+# class Conv2d(nn.Module):
+#     """
+#     Enhanced Conv2d layer that combines convolution, normalization, and activation.
     
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: Union[int, tuple] = 1,
-        stride: Union[int, tuple] = 1,
-        padding: Union[int, tuple, str] = 0,
-        dilation: Union[int, tuple] = 1,
-        groups: int = 1,
-        bias: Optional[bool] = None,
-        norm: Optional[str] = None,
-        activation: Optional[Union[str, Callable]] = None,
-    ):
-        """
-        Initialize the enhanced Conv2d layer.
-        
-        Args:
-            in_channels, out_channels, kernel_size, stride, padding, dilation, groups:
-                Standard PyTorch Conv2d parameters
-            bias: Whether to use bias. If None, automatically determined based on norm
-            norm: Normalization type ('BN', 'GN', 'LN', or None)
-            activation: Activation function ('relu', 'gelu', 'swish', or callable, or None)
-        """
-        super().__init__()
-        
-        # Store configuration for debugging and introspection
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.norm_type = norm
-        self.activation_type = activation
-        
-        # Determine bias usage: disable bias when using normalization
-        # This is a key insight - normalization layers typically handle the bias term,
-        # so having bias in both places is redundant and can hurt training
-        if bias is None:
-            bias = norm is None
-        
-        # Create the core convolution layer
-        self.conv = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            groups=groups,
-            bias=bias
-        )
-        
-        # Add normalization layer if specified
-        self.norm = self._build_norm_layer(norm, out_channels)
-        
-        # Add activation function if specified
-        self.activation = self._build_activation_layer(activation)
-        
-        # Apply proper weight initialization
-        self._initialize_weights()
+#     This implementation provides detectron2-like functionality while being completely
+#     self-contained and adaptable to your specific needs. Think of it as a "smart"
+#     convolution layer that handles all the common patterns you need in modern
+#     computer vision models.
     
-    def _build_norm_layer(self, norm_type: Optional[str], num_features: int) -> Optional[nn.Module]:
-        """
-        Build the normalization layer based on the specified type.
-        
-        This method encapsulates the logic for creating different types of
-        normalization layers, making it easy to experiment with different
-        normalization strategies without changing the core model code.
-        """
-        if norm_type is None:
-            return None
-        
-        norm_type = norm_type.upper()
-        
-        if norm_type == "BN":
-            # BatchNorm: normalizes across the batch dimension
-            # Good for large batch sizes, less effective for small batches
-            return nn.BatchNorm2d(num_features)
-        
-        elif norm_type == "GN":
-            # GroupNorm: normalizes across groups of channels
-            # More stable than BatchNorm for small batches
-            # Use 32 groups as a reasonable default, but ensure we don't exceed num_features
-            num_groups = min(32, num_features)
-            # Ensure num_features is divisible by num_groups
-            while num_features % num_groups != 0:
-                num_groups -= 1
-            return nn.GroupNorm(num_groups, num_features)
-        
-        elif norm_type == "LN":
-            # LayerNorm: normalizes across the feature dimension
-            # Often used in transformer architectures
-            return nn.GroupNorm(1, num_features)  # GroupNorm with 1 group is equivalent to LayerNorm
-        
-        elif norm_type == "IN":
-            # InstanceNorm: normalizes across spatial dimensions for each channel independently
-            # Sometimes used in style transfer and other specific applications
-            return nn.InstanceNorm2d(num_features)
-        
-        else:
-            raise ValueError(f"Unsupported normalization type: {norm_type}")
+#     The key insight is that most conv layers in modern architectures follow the
+#     same pattern: Conv -> Norm -> Activation. By bundling these together, we can
+#     ensure consistency, reduce boilerplate code, and make architectural changes
+#     easier to implement.
+#     """
     
-    def _build_activation_layer(self, activation: Optional[Union[str, Callable]]) -> Optional[nn.Module]:
-        """
-        Build the activation layer based on the specified type.
+#     def __init__(
+#         self,
+#         in_channels: int,
+#         out_channels: int,
+#         kernel_size: Union[int, tuple] = 1,
+#         stride: Union[int, tuple] = 1,
+#         padding: Union[int, tuple, str] = 0,
+#         dilation: Union[int, tuple] = 1,
+#         groups: int = 1,
+#         bias: Optional[bool] = None,
+#         norm: Optional[str] = None,
+#         activation: Optional[Union[str, Callable]] = None,
+#     ):
+#         """
+#         Initialize the enhanced Conv2d layer.
         
-        This method provides a flexible way to specify activation functions
-        either as strings (for common activations) or as callable objects
-        (for custom activations).
-        """
-        if activation is None:
-            return None
+#         Args:
+#             in_channels, out_channels, kernel_size, stride, padding, dilation, groups:
+#                 Standard PyTorch Conv2d parameters
+#             bias: Whether to use bias. If None, automatically determined based on norm
+#             norm: Normalization type ('BN', 'GN', 'LN', or None)
+#             activation: Activation function ('relu', 'gelu', 'swish', or callable, or None)
+#         """
+#         super().__init__()
         
-        if isinstance(activation, str):
-            activation = activation.lower()
+#         # Store configuration for debugging and introspection
+#         self.in_channels = in_channels
+#         self.out_channels = out_channels
+#         self.norm_type = norm
+#         self.activation_type = activation
+        
+#         # Determine bias usage: disable bias when using normalization
+#         # This is a key insight - normalization layers typically handle the bias term,
+#         # so having bias in both places is redundant and can hurt training
+#         if bias is None:
+#             bias = norm is None
+        
+#         # Create the core convolution layer
+#         self.conv = nn.Conv2d(
+#             in_channels=in_channels,
+#             out_channels=out_channels,
+#             kernel_size=kernel_size,
+#             stride=stride,
+#             padding=padding,
+#             dilation=dilation,
+#             groups=groups,
+#             bias=bias
+#         )
+        
+#         # Add normalization layer if specified
+#         self.norm = self._build_norm_layer(norm, out_channels)
+        
+#         # Add activation function if specified
+#         self.activation = self._build_activation_layer(activation)
+        
+#         # Apply proper weight initialization
+#         self._initialize_weights()
+    
+#     def _build_norm_layer(self, norm_type: Optional[str], num_features: int) -> Optional[nn.Module]:
+#         """
+#         Build the normalization layer based on the specified type.
+        
+#         This method encapsulates the logic for creating different types of
+#         normalization layers, making it easy to experiment with different
+#         normalization strategies without changing the core model code.
+#         """
+#         if norm_type is None:
+#             return None
+        
+#         norm_type = norm_type.upper()
+        
+#         if norm_type == "BN":
+#             # BatchNorm: normalizes across the batch dimension
+#             # Good for large batch sizes, less effective for small batches
+#             return nn.BatchNorm2d(num_features)
+        
+#         elif norm_type == "GN":
+#             # GroupNorm: normalizes across groups of channels
+#             # More stable than BatchNorm for small batches
+#             # Use 32 groups as a reasonable default, but ensure we don't exceed num_features
+#             num_groups = min(32, num_features)
+#             # Ensure num_features is divisible by num_groups
+#             while num_features % num_groups != 0:
+#                 num_groups -= 1
+#             return nn.GroupNorm(num_groups, num_features)
+        
+#         elif norm_type == "LN":
+#             # LayerNorm: normalizes across the feature dimension
+#             # Often used in transformer architectures
+#             return nn.GroupNorm(1, num_features)  # GroupNorm with 1 group is equivalent to LayerNorm
+        
+#         elif norm_type == "IN":
+#             # InstanceNorm: normalizes across spatial dimensions for each channel independently
+#             # Sometimes used in style transfer and other specific applications
+#             return nn.InstanceNorm2d(num_features)
+        
+#         else:
+#             raise ValueError(f"Unsupported normalization type: {norm_type}")
+    
+#     def _build_activation_layer(self, activation: Optional[Union[str, Callable]]) -> Optional[nn.Module]:
+#         """
+#         Build the activation layer based on the specified type.
+        
+#         This method provides a flexible way to specify activation functions
+#         either as strings (for common activations) or as callable objects
+#         (for custom activations).
+#         """
+#         if activation is None:
+#             return None
+        
+#         if isinstance(activation, str):
+#             activation = activation.lower()
             
-            if activation == "relu":
-                return nn.ReLU(inplace=True)
-            elif activation == "gelu":
-                return nn.GELU()
-            elif activation == "swish" or activation == "silu":
-                return nn.SiLU(inplace=True)
-            elif activation == "leaky_relu":
-                return nn.LeakyReLU(0.1, inplace=True)
-            elif activation == "elu":
-                return nn.ELU(inplace=True)
-            else:
-                raise ValueError(f"Unsupported activation type: {activation}")
+#             if activation == "relu":
+#                 return nn.ReLU(inplace=True)
+#             elif activation == "gelu":
+#                 return nn.GELU()
+#             elif activation == "swish" or activation == "silu":
+#                 return nn.SiLU(inplace=True)
+#             elif activation == "leaky_relu":
+#                 return nn.LeakyReLU(0.1, inplace=True)
+#             elif activation == "elu":
+#                 return nn.ELU(inplace=True)
+#             else:
+#                 raise ValueError(f"Unsupported activation type: {activation}")
         
-        elif callable(activation):
-            # Allow custom activation functions
-            return activation
+#         elif callable(activation):
+#             # Allow custom activation functions
+#             return activation
         
-        else:
-            raise ValueError(f"Activation must be string or callable, got {type(activation)}")
+#         else:
+#             raise ValueError(f"Activation must be string or callable, got {type(activation)}")
     
-    def _initialize_weights(self):
-        """
-        Initialize weights using appropriate strategies for the layer configuration.
+#     def _initialize_weights(self):
+#         """
+#         Initialize weights using appropriate strategies for the layer configuration.
         
-        This method implements initialization best practices that have been
-        developed through extensive empirical research. The initialization
-        strategy is chosen based on the activation function and normalization
-        to ensure good training dynamics from the start.
-        """
-        # Determine the appropriate initialization based on activation type
-        if self.activation_type is None:
-            # Linear activation: use Xavier/Glorot initialization
-            nn.init.xavier_uniform_(self.conv.weight)
-        elif isinstance(self.activation_type, str):
-            activation_lower = self.activation_type.lower()
-            if activation_lower in ["relu", "leaky_relu", "elu"]:
-                # ReLU-family activations: use He initialization
-                nn.init.kaiming_normal_(self.conv.weight, mode='fan_out', nonlinearity='relu')
-            elif activation_lower in ["gelu", "swish", "silu"]:
-                # Smooth activations: use Xavier with slight modification
-                nn.init.xavier_normal_(self.conv.weight)
-            else:
-                # Default to Xavier for unknown activations
-                nn.init.xavier_uniform_(self.conv.weight)
-        else:
-            # Custom activation: use conservative Xavier initialization
-            nn.init.xavier_uniform_(self.conv.weight)
+#         This method implements initialization best practices that have been
+#         developed through extensive empirical research. The initialization
+#         strategy is chosen based on the activation function and normalization
+#         to ensure good training dynamics from the start.
+#         """
+#         # Determine the appropriate initialization based on activation type
+#         if self.activation_type is None:
+#             # Linear activation: use Xavier/Glorot initialization
+#             nn.init.xavier_uniform_(self.conv.weight)
+#         elif isinstance(self.activation_type, str):
+#             activation_lower = self.activation_type.lower()
+#             if activation_lower in ["relu", "leaky_relu", "elu"]:
+#                 # ReLU-family activations: use He initialization
+#                 nn.init.kaiming_normal_(self.conv.weight, mode='fan_out', nonlinearity='relu')
+#             elif activation_lower in ["gelu", "swish", "silu"]:
+#                 # Smooth activations: use Xavier with slight modification
+#                 nn.init.xavier_normal_(self.conv.weight)
+#             else:
+#                 # Default to Xavier for unknown activations
+#                 nn.init.xavier_uniform_(self.conv.weight)
+#         else:
+#             # Custom activation: use conservative Xavier initialization
+#             nn.init.xavier_uniform_(self.conv.weight)
         
-        # Initialize bias if present
-        if self.conv.bias is not None:
-            nn.init.constant_(self.conv.bias, 0)
+#         # Initialize bias if present
+#         if self.conv.bias is not None:
+#             nn.init.constant_(self.conv.bias, 0)
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass through conv -> norm -> activation pipeline.
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         """
+#         Forward pass through conv -> norm -> activation pipeline.
         
-        This method demonstrates the typical flow in modern computer vision
-        architectures where these three operations are almost always used together.
-        """
-        # Apply convolution
-        x = self.conv(x)
+#         This method demonstrates the typical flow in modern computer vision
+#         architectures where these three operations are almost always used together.
+#         """
+#         # Apply convolution
+#         x = self.conv(x)
         
-        # Apply normalization if present
+#         # Apply normalization if present
+#         if self.norm is not None:
+#             x = self.norm(x)
+        
+#         # Apply activation if present
+#         if self.activation is not None:
+#             x = self.activation(x)
+        
+#         return x
+    
+#     def extra_repr(self) -> str:
+#         """
+#         Provide a string representation that shows the full configuration.
+        
+#         This makes it easy to understand the layer configuration when
+#         printing model architectures or debugging.
+#         """
+#         parts = []
+#         parts.append(f"{self.in_channels}, {self.out_channels}")
+#         parts.append(f"kernel_size={self.conv.kernel_size}")
+#         parts.append(f"stride={self.conv.stride}")
+        
+#         if self.conv.padding != (0, 0):
+#             parts.append(f"padding={self.conv.padding}")
+        
+#         if self.conv.dilation != (1, 1):
+#             parts.append(f"dilation={self.conv.dilation}")
+        
+#         if self.conv.groups != 1:
+#             parts.append(f"groups={self.conv.groups}")
+        
+#         if self.conv.bias is None:
+#             parts.append("bias=False")
+        
+#         if self.norm_type:
+#             parts.append(f"norm={self.norm_type}")
+        
+#         if self.activation_type:
+#             parts.append(f"activation={self.activation_type}")
+        
+#         return ", ".join(parts)
+
+TORCH_VERSION = tuple(int(x) for x in torch.__version__.split(".")[:2])
+
+def check_if_dynamo_compiling():
+    if TORCH_VERSION >= (2, 1):
+        from torch._dynamo import is_compiling
+
+        return is_compiling()
+    else:
+        return False
+
+class Conv2d(torch.nn.Conv2d):
+    """
+    A wrapper around :class:`torch.nn.Conv2d` to support empty inputs and more features.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Extra keyword arguments supported in addition to those in `torch.nn.Conv2d`:
+
+        Args:
+            norm (nn.Module, optional): a normalization layer
+            activation (callable(Tensor) -> Tensor): a callable activation function
+
+        It assumes that norm layer is used before activation.
+        """
+        norm = kwargs.pop("norm", None)
+        activation = kwargs.pop("activation", None)
+        super().__init__(*args, **kwargs)
+
+        self.norm = norm
+        self.activation = activation
+
+    def forward(self, x):
+        # torchscript does not support SyncBatchNorm yet
+        # https://github.com/pytorch/pytorch/issues/40507
+        # and we skip these codes in torchscript since:
+        # 1. currently we only support torchscript in evaluation mode
+        # 2. features needed by exporting module to torchscript are added in PyTorch 1.6 or
+        # later version, `Conv2d` in these PyTorch versions has already supported empty inputs.
+        if not torch.jit.is_scripting():
+            # Dynamo doesn't support context managers yet
+            is_dynamo_compiling = check_if_dynamo_compiling()
+            if not is_dynamo_compiling:
+                with warnings.catch_warnings(record=True):
+                    if x.numel() == 0 and self.training:
+                        # https://github.com/pytorch/pytorch/issues/12013
+                        assert not isinstance(
+                            self.norm, torch.nn.SyncBatchNorm
+                        ), "SyncBatchNorm does not support empty inputs!"
+
+        x = F.conv2d(
+            x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
+        )
         if self.norm is not None:
             x = self.norm(x)
-        
-        # Apply activation if present
         if self.activation is not None:
             x = self.activation(x)
-        
         return x
-    
-    def extra_repr(self) -> str:
-        """
-        Provide a string representation that shows the full configuration.
-        
-        This makes it easy to understand the layer configuration when
-        printing model architectures or debugging.
-        """
-        parts = []
-        parts.append(f"{self.in_channels}, {self.out_channels}")
-        parts.append(f"kernel_size={self.conv.kernel_size}")
-        parts.append(f"stride={self.conv.stride}")
-        
-        if self.conv.padding != (0, 0):
-            parts.append(f"padding={self.conv.padding}")
-        
-        if self.conv.dilation != (1, 1):
-            parts.append(f"dilation={self.conv.dilation}")
-        
-        if self.conv.groups != 1:
-            parts.append(f"groups={self.conv.groups}")
-        
-        if self.conv.bias is None:
-            parts.append("bias=False")
-        
-        if self.norm_type:
-            parts.append(f"norm={self.norm_type}")
-        
-        if self.activation_type:
-            parts.append(f"activation={self.activation_type}")
-        
-        return ", ".join(parts)
 
 # MSDeformAttn Transformer encoder in deformable detr
 class MSDeformAttnTransformerEncoderOnly(nn.Module):

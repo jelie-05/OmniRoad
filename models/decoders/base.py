@@ -18,12 +18,12 @@ class BaseDecoder(nn.Module):
         super().__init__()
         self.config = config
         
-        if isinstance(config.input_dim, list):
-            if len(config.input_dim) == 0:
-                raise ValueError(f"Invalid input dimension: {config.input_dim}")
-        else:
-            if config.input_dim <= 0:
-                raise ValueError(f"Invalid input dimension: {config.input_dim}")
+        # if isinstance(config.input_dim, list):
+        #     if len(config.input_dim) == 0:
+        #         raise ValueError(f"Invalid input dimension: {config.input_dim}")
+        # else:
+        #     if config.input_dim <= 0:
+        #         raise ValueError(f"Invalid input dimension: {config.input_dim}")
         
         if config.num_classes <= 0:
             raise ValueError(f"Invalid output dimension: {config.num_classes}")

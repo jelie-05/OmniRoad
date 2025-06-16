@@ -11,7 +11,7 @@ from .mask2former import Mask2FormerHead
 DECODER_REGISTRY: Dict[str, Type[BaseDecoder]] = {
     'linear_probing': LinearProbing,
     'segformer_head': SegFormerHead,
-    'mask2former': Mask2FormerHead,
+    'mask2former_head': Mask2FormerHead,
 }
 
 def create_decoder(config: DecoderConfig) -> BaseDecoder:

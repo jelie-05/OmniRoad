@@ -6,7 +6,8 @@ from .base import (
     TrainingConfig,
     DataConfig,
     OptimizerConfig,
-    SchedulerConfig
+    SchedulerConfig,
+    ShapeSpec,
 )
 
 # Import registry base class
@@ -33,7 +34,7 @@ __all__ = [
     "DataConfig",
     "OptimizerConfig",
     "SchedulerConfig",
-    
+    "ShapeSpec",
     # Registry classes
     "ConfigRegistry",
     "EncoderRegistry",

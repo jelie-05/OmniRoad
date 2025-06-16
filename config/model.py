@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
-from .base import ModelConfig, EncoderConfig, DecoderConfig
+from .base import ModelConfig, EncoderConfig, DecoderConfig, ShapeSpec
 from .registry import ConfigRegistry
 from .encoder import EncoderRegistry
 from .decoder import DecoderRegistry
@@ -305,3 +305,31 @@ class LoRASwinV2BaseWindow8SegFormerHeadConfig(ModelConfig):
         self.decoder.in_channels = self.encoder.output_dim
         self.decoder.input_dim = self.encoder.output_dim
         self.decoder.encoder_name = self.encoder.name
+
+@ModelRegistry.register("swinv2_base_window8_256-mask2former_head")
+@dataclass
+class SwinV2BaseWindow8Mask2FormerHeadConfig(ModelConfig):
+    name: str = 'swinv2_base_window8_256-mask2former_head'
+    input_size: Tuple[int, int] = (256, 256)
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("swinv2_base_window8_256")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("mask2former_head")()
+    )
+    
+    def __post_init__(self):
+        # Ensure decoder input_dim matches encoder output_dim
+        # self.decoder.in_channels = self.encoder.output_dim
+        # self.decoder.input_dim = self.encoder.output_dim
+        # self.decoder.encoder_name = self.encoder.name
+
+        channels_list = self.encoder.output_dim
+
+        self.decoder.input_shape = {
+            "res2": ShapeSpec(channels=channels_list[0], stride=4, height=64, width=64),   # 256/4
+            "res3": ShapeSpec(channels=channels_list[1], stride=8, height=32, width=32),   # 256/8
+            "res4": ShapeSpec(channels=channels_list[2], stride=16, height=16, width=16),  # 256/16
+            "res5": ShapeSpec(channels=channels_list[3], stride=32, height=8, width=8),    # 256/32
+        }
+        self.decoder.transformer_in_features = ["res2", "res3", "res4", "res5"]
