@@ -7,6 +7,17 @@ from .registry import ConfigRegistry
 # Create a registry for probing head configurations
 DecoderRegistry = ConfigRegistry[DecoderConfig]("DecoderRegistry")
 
+@DecoderRegistry.register("mask2former_head")
+@dataclass
+class Mask2FormerHeadConfig(DecoderConfig):
+    """mask2former head."""
+    name: str = 'mask2former_head'
+    input_dim: int = -1
+    num_classes: int = -1
+    in_channels: List[int] = field(default_factory=lambda: [384, 384, 384, 384])
+    embed_dim: int = 512
+    encoder_name: str = None
+    dropout: float = 0.1
 
 @DecoderRegistry.register("segformer_head")
 @dataclass
