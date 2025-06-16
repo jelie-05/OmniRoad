@@ -92,9 +92,9 @@ class Mask2FormerHead(BaseDecoder):
 
     def forward(self, inputs, mask=None):
         if isinstance(inputs, list):
-            assert len(inputs) == len(config.input_shape)
+            assert len(inputs) == len(self.config.input_shape)
             features = {}
-            keys = list(config.input_shape.keys())
+            keys = list(self.config.input_shape.keys())
             for i in range(len(inputs)):
                 features[keys[i]] = inputs[i]
             inputs = features

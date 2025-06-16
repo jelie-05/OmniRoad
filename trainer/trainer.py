@@ -802,7 +802,7 @@ class Trainer:
         # Add encoder parameters
         encoder_params = []
         for name, param in self.model.named_parameters():
-            if 'encoder' in name and param.requires_grad:
+            if name.startswith('encoder.') and param.requires_grad:
                 encoder_params.append(param)
         
         if encoder_params:
@@ -815,7 +815,7 @@ class Trainer:
         # Add decoder parameters
         decoder_params = []
         for name, param in self.model.named_parameters():
-            if 'decoder' in name and param.requires_grad:
+            if name.startswith('decoder.') and param.requires_grad:
                 decoder_params.append(param)
         
         if decoder_params:
