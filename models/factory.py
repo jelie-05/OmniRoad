@@ -18,6 +18,5 @@ def create_model(config: Config) -> EncoderDecoderModel:
     # Ensure decoder output_dim is set correctly based on task
     if hasattr(config.data, 'num_classes') and config.model.decoder.num_classes <= 0:
         config.model.decoder.num_classes = config.data.num_classes
-    
     # Create the model
     return EncoderDecoderModel(config.model)

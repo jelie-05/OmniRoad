@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 
 from config.base import DecoderConfig
 from .base import BaseDecoder
@@ -121,3 +122,9 @@ class Mask2FormerHead(BaseDecoder):
     def get_mask_dim(self):
         """Get the mask feature dimension."""
         return getattr(self.config, 'mask_dim', 256)
+
+    def semantic_inference(self, mask_cls, mask_pred):
+        mask_cls = F.softmax(mask_cls, dim=-1)[..., :-1]
+        mask_pred = mask_pred.sigmoid()
+        semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
+        return semseg

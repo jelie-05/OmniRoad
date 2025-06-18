@@ -560,6 +560,7 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
         assert mask_classification, "Only support mask classification model"
         self.mask_classification = mask_classification
 
+        # print("num_classes: ", num_classes)
         # positional encoding
         N_steps = hidden_dim // 2
         self.pe_layer = PositionEmbeddingSine(N_steps, normalize=True)
