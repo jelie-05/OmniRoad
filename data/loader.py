@@ -71,7 +71,8 @@ def get_data_loaders(
         pin_memory=config.data.pin_memory,
         persistent_workers=config.data.persistent_workers,
         prefetch_factor=config.data.prefetch_factor,
-        drop_last=config.data.drop_last
+        drop_last=config.data.drop_last,
+        collate_fn=train_dataset.collate_fn
     )
     
     val_loader = None
@@ -85,7 +86,8 @@ def get_data_loaders(
             pin_memory=config.data.pin_memory,
             persistent_workers=config.data.persistent_workers,
             prefetch_factor=config.data.prefetch_factor,
-            drop_last=False
+            drop_last=False,
+            collate_fn=val_dataset.collate_fn
         )
     
     test_loader = None
@@ -99,7 +101,8 @@ def get_data_loaders(
             pin_memory=config.data.pin_memory,
             persistent_workers=config.data.persistent_workers,
             prefetch_factor=config.data.prefetch_factor,
-            drop_last=False
+            drop_last=False,
+            collate_fn=test_dataset.collate_fn
         )
     
     return train_loader, val_loader, test_loader

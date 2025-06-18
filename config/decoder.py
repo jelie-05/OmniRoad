@@ -34,6 +34,7 @@ class Mask2FormerHeadConfig(DecoderConfig):
     # Transformer decoder config
     maskformer_hidden_dim: int = 256
     num_obj_queries: int = 100
+    # num_obj_queries: int = 32
     maskformer_nheads: int = 8
     maskformer_dim_feedforward: int = 2048
     dec_layers: int = 9
@@ -45,6 +46,17 @@ class Mask2FormerHeadConfig(DecoderConfig):
     
     # Training specific
     mask_classification: bool = True
+
+    ## Optimization 
+    # Loss parameters:
+    deep_supervision: bool = True
+    no_object_weight: float = 0.1
+    class_weight: float = 2.0
+    dice_weight: float = 5.0
+    mask_weight: float = 5.0
+    train_num_points: int = 112 * 112
+    oversample_ratio: float = 3.0
+    importance_sample_ratio: float = 0.75
 
 @DecoderRegistry.register("segformer_head")
 @dataclass

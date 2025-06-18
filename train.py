@@ -152,6 +152,7 @@ def main():
 
             print(f"Encoder: {config.model.encoder.name}, Freeze: {config.model.encoder.freeze}")
             print(f"Decoder: {config.model.decoder.name}, Output dim: {config.model.decoder.num_classes}")
+            print(f"Dataset: {config.data.dataset_name}, Number of classes: {config.data.num_classes}")
             print(f"Training for {config.training.epochs} epochs with lr={config.training.optimizer.learning_rate}")
         
         # Create the model

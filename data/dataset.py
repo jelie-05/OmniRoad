@@ -28,6 +28,7 @@ def get_dataset(config: DataConfig, split: str = "train") -> Optional[Dataset]:
     if config.dataset_name not in DATASET_REGISTRY:
         raise ValueError(f"Unknown dataset: {config.dataset_name}")
     
+    print(f"Loading {config.task_type} dataset with {config.num_classes} classes")
     # Get dataset class
     dataset_class = DATASET_REGISTRY[config.dataset_name]
     
@@ -65,7 +66,8 @@ def get_dataset(config: DataConfig, split: str = "train") -> Optional[Dataset]:
             mask_transform=mask_transform,
             class_names=config.class_names,
             label_colors_list=config.label_colors_list,
-            split=split
+            split=split,
+            task_type=config.task_type,
         )
     
     # Add handling for other datasets here

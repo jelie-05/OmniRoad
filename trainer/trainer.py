@@ -9,7 +9,6 @@ from pathlib import Path
 import yaml
 import datetime
 from torch.cuda.amp import autocast, GradScaler
-
 from config.base import Config
 from utility.metrics import AverageMeter, ConfusionMatrix
 from utility.distributed import (
@@ -34,6 +33,8 @@ import numpy as np
 import io
 from PIL import Image
 import torch.nn.functional as F
+from .criterion import SetCriterion
+from .matcher import HungarianMatcher
 
 class Trainer:
     """Trainer class for handling the training loop with distributed support."""
@@ -150,9 +151,49 @@ class Trainer:
         # else:
         #     # Default for classification
         #     self.criterion = nn.CrossEntropyLoss()
-        self.criterion = nn.CrossEntropyLoss()
-        self.criterion_eval = nn.CrossEntropyLoss(ignore_index=config.data.ignore_index 
+
+        if self.config.data.task_type == 'semantic_segmentation':
+            self.criterion = nn.CrossEntropyLoss()
+            self.criterion_eval = nn.CrossEntropyLoss(ignore_index=config.data.ignore_index 
                                                 if hasattr(config.data, 'ignore_index') else 255)
+        elif self.config.data.task_type == 'instance_segmentation':
+            # Loss parameters:
+            deep_supervision = self.config.model.decoder.deep_supervision
+            no_object_weight = self.config.model.decoder.no_object_weight
+
+            # loss weights
+            class_weight = self.config.model.decoder.class_weight
+            dice_weight = self.config.model.decoder.dice_weight
+            mask_weight = self.config.model.decoder.mask_weight
+
+            matcher = HungarianMatcher(
+                cost_class=class_weight,
+                cost_mask=mask_weight,
+                cost_dice=dice_weight,
+                num_points=self.config.model.decoder.train_num_points,
+            )
+
+            weight_dict = {"loss_ce": class_weight, "loss_mask": mask_weight, "loss_dice": dice_weight}
+
+            if deep_supervision:
+                dec_layers = self.config.model.decoder.dec_layers
+                aux_weight_dict = {}
+                for i in range(dec_layers - 1):
+                    aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
+                weight_dict.update(aux_weight_dict)
+            
+            losses = ["labels", "masks"]
+
+            self.criterion = SetCriterion(
+                self.config.data.num_classes,
+                matcher=matcher,
+                weight_dict=weight_dict,
+                eos_coef=no_object_weight,
+                losses=losses,
+                num_points=self.config.model.decoder.train_num_points,
+                oversample_ratio=self.config.model.decoder.oversample_ratio,
+                importance_sample_ratio=self.config.model.decoder.importance_sample_ratio,
+            ).to(device)
         
         # Initialize training state variables
         self.best_val_loss = float('inf')
@@ -184,8 +225,8 @@ class Trainer:
             self.writer = SummaryWriter(log_dir=tensorboard_dir)
             
             # Log model graph if not resuming
-            if not self.resume_checkpoint:
-                self.log_model_graph()
+            # if not self.resume_checkpoint:
+            #     self.log_model_graph()
             
             print(f"TensorBoard logs will be saved to: {tensorboard_dir}")
             print(f"Start TensorBoard with: tensorboard --logdir {tensorboard_dir}")
@@ -245,131 +286,6 @@ class Trainer:
         return {
             'test_metrics': test_metrics,
             'test_time': test_time
-        }
-        
-    def batch_pix_accuracy(self, predict, target, labeled):
-        pixel_labeled = labeled.sum()
-        pixel_correct = ((predict == target) * labeled).sum()
-        assert pixel_correct <= pixel_labeled, "Correct area should be smaller than Labeled"
-        return pixel_correct.cpu().numpy(), pixel_labeled.cpu().numpy()
-
-    def batch_iou(self, predictions, target, num_classes, labeled):
-        labeled_mask = labeled.view(-1)
-        pred_flat = predictions.view(-1)[labeled_mask]
-        target_flat = target.view(-1)[labeled_mask]
-        
-        # Find pixels where prediction matches target (intersection)
-        correct_mask = (pred_flat == target_flat)
-        intersection_classes = target_flat[correct_mask]
-        
-        area_inter = torch.histc(intersection_classes.float(), bins=num_classes, max=num_classes-1, min=0)
-        area_pred = torch.histc(pred_flat.float(), bins=num_classes, max=num_classes-1, min=0)
-        area_lab = torch.histc(target_flat.float(), bins=num_classes, max=num_classes-1, min=0)
-        print('Inter', area_inter.int())
-        print('Pred', area_pred.int())
-        print('GT', area_lab.int())
-        area_union = area_pred + area_lab - area_inter
-        print('Union', area_union.int())
-        assert (area_inter <= area_union).all(), f"Intersection area should be smaller than Union area"
-        return area_inter.cpu().numpy(), area_union.cpu().numpy()
-    
-    def eval_metric(self, output, target, num_classes):
-        _, predictions = torch.max(output.data, 1)
-        labeled = (target >= 0) * (target < num_classes)
-        correct, num_labeled = self.batch_pix_accuracy(predictions, target, labeled)
-        inter, union = self.batch_iou(predictions, target, num_classes, labeled)
-        return [np.round(correct, 5), np.round(num_labeled, 5), np.round(inter, 5), np.round(union, 5)]
-    
-    def test_epoch_r2s(self) -> Dict[str, float]:
-        self.model.eval()
-        valid_running_loss = 0.0
-        valid_running_inter, valid_running_union = 0, 0
-        valid_running_correct, valid_running_label = 0, 0
-
-        loss_meter = AverageMeter()
-        cuda_mem = AverageMeter()
-
-        with torch.no_grad():
-            # Only show progress bar on main process
-            if is_main_process():
-                pbar = tqdm(self.test_loader, desc='[TESTING]')
-            else:
-                pbar = self.test_loader
-
-            for batch_idx, batch in enumerate(pbar):
-                # Get data
-                if isinstance(batch, dict):
-                    inputs = batch['image'].to(self.device)
-                    targets = batch['target'].to(self.device)
-                else:  # Assume tuple (inputs, targets)
-                    inputs, targets = batch
-                    inputs = inputs.to(self.device)
-                    targets = targets.to(self.device)
-                
-                # Run forward pass
-                outputs = self.model(inputs)
-                outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
-
-                loss = self.criterion_eval(outputs, targets)
-                
-                # Update metrics
-                loss_meter.update(loss.item(), inputs.size(0))
-                if torch.cuda.is_available():
-                    cuda_mem.update(torch.cuda.max_memory_allocated(device=None) / (1024 * 1024 * 1024))
-                
-                # Update confusion matrix for IoU calculation
-                # confusion_matrix.update(outputs, targets)
-                
-                # Update progress bar only on main process
-                ##### BATCH-WISE METRICS ####
-                correct, labeled, inter, union = self.eval_metric(outputs, 
-                                                                targets, 
-                                                                self.config.data.num_classes)
-                valid_running_inter += inter
-                valid_running_union += union
-                # for pixel accuracy
-                valid_running_correct += correct
-                valid_running_label += labeled
-                #############################
-
-                ##### TENSORBOARD LOGGING #####
-                valid_running_IoU = 1.0 * inter / (np.spacing(1) + union)
-                valid_running_mIoU = valid_running_IoU.mean()
-                valid_running_pixacc = 1.0 * correct / (np.spacing(1) + labeled)
-                ###############################
-
-                if is_main_process():
-                    monitor = {
-                        'Loss': f'{loss_meter.val:.4f} ({loss_meter.avg:.4f})',
-                        'CUDA': f'{cuda_mem.val:.2f} ({cuda_mem.avg:.2f})',
-                        'mIoU': f'{valid_running_mIoU:.4f}',
-                        'PixAcc': f'{valid_running_pixacc:.4f}'
-                    }
-                    pbar.set_postfix(monitor)
-
-        # Final calculations
-        final_IoU = valid_running_inter / (np.spacing(1) + valid_running_union)
-        final_mIoU = final_IoU.mean()
-        final_pixacc = valid_running_correct / (np.spacing(1) + valid_running_label)
-        
-        # Calculate class accuracy (per-class pixel accuracy)
-        # For this, we'd need per-class correct/total counts, which isn't tracked in the original R2S
-        # As an approximation, we'll use the per-class IoU converted to accuracy
-        class_accuracy = final_IoU  # This is an approximation
-        mean_accuracy = class_accuracy.mean()
-        
-        # Calculate frequency weighted IoU
-        class_frequencies = valid_running_union / valid_running_union.sum()
-        fw_iou = (class_frequencies * final_IoU).sum()
-
-        return {
-            'test_loss': loss_meter.avg,
-            'pixel_accuracy': final_pixacc,
-            'mean_accuracy': mean_accuracy,
-            'mean_iou': final_mIoU,
-            'fw_iou': fw_iou,
-            'iou': final_IoU,
-            'confusion_matrix': None
         }
 
     def test_epoch(self) -> Dict[str, float]:
@@ -800,11 +716,17 @@ class Trainer:
         params = []
         
         # Add encoder parameters
-        encoder_params = []
-        for name, param in self.model.named_parameters():
-            if 'encoder' in name and param.requires_grad:
-                encoder_params.append(param)
-        
+        if not is_distributed():
+            encoder_params = []
+            for name, param in self.model.named_parameters():
+                if name.startswith('encoder.') and param.requires_grad:
+                    encoder_params.append(param)
+        else:
+            encoder_params = []
+            for name, param in self.model.named_parameters():
+                if name.startswith('module.encoder.') and param.requires_grad:
+                    encoder_params.append(param)
+
         if encoder_params:
         # if encoder_params and not self.config.model.encoder.freeze:
             params.append({
@@ -813,10 +735,16 @@ class Trainer:
             })
         
         # Add decoder parameters
-        decoder_params = []
-        for name, param in self.model.named_parameters():
-            if 'decoder' in name and param.requires_grad:
-                decoder_params.append(param)
+        if not is_distributed():
+            decoder_params = []
+            for name, param in self.model.named_parameters():
+                if name.startswith('decoder.') and param.requires_grad:
+                    decoder_params.append(param)
+        else:
+            decoder_params = []
+            for name, param in self.model.named_parameters():
+                if name.startswith('module.decoder.') and param.requires_grad:
+                    decoder_params.append(param)
         
         if decoder_params:
             params.append({
@@ -1065,7 +993,8 @@ class Trainer:
         for batch_idx, batch in enumerate(pbar):
             # Measure data loading time
             data_time.update(time.time() - start)
-            
+            # if batch_idx > 5:
+            #     break
             # Get data
             if isinstance(batch, dict):
                 inputs = batch['image'].to(self.device)
@@ -1073,8 +1002,9 @@ class Trainer:
             else:  # Assume tuple (inputs, targets)
                 inputs, targets = batch
                 inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-            
+                if not isinstance(targets, list):
+                    targets = targets.to(self.device)
+
             # Zero gradients
             self.optimizer.zero_grad()
             
@@ -1082,12 +1012,23 @@ class Trainer:
                 # Mixed precision training
                 with autocast():
                     outputs = self.model(inputs)
-                    outputs = torch.nn.functional.interpolate(
-                        outputs, size=targets.shape[1:], 
-                        mode="bilinear", align_corners=False
-                    )
-                    loss = self.criterion(outputs, targets)
-                
+                    if self.config.data.task_type == 'semantic_segmentation':
+                        outputs = torch.nn.functional.interpolate(
+                            outputs, size=targets.shape[1:], 
+                            mode="bilinear", align_corners=False
+                        )
+                        loss = self.criterion(outputs, targets)
+                    elif self.config.data.task_type == 'instance_segmentation':
+                        loss = self.criterion(outputs, targets)
+                        if isinstance(loss, dict):
+                            for k in list(loss.keys()):
+                                if k in self.criterion.weight_dict:
+                                    loss[k] *= self.criterion.weight_dict[k]
+                                else:
+                                    # remove this loss if not specified in `weight_dict`
+                                    loss.pop(k)
+                            loss_dict = loss.copy()
+                            loss = sum(loss_dict.values())
                 # Scale loss to prevent gradient underflow
                 scaled_loss = self.scaler.scale(loss)
                 scaled_loss.backward()
@@ -1107,9 +1048,21 @@ class Trainer:
             else:
                 # Standard precision training
                 outputs = self.model(inputs)
-                outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
+                if self.config.data.task_type == 'semantic_segmentation':
+                    outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
+                    loss = self.criterion(outputs, targets)
+                elif self.config.data.task_type == 'instance_segmentation':
+                    loss = self.criterion(outputs, targets)
+                    if isinstance(loss, dict):
+                        for k in list(loss.keys()):
+                            if k in self.criterion.weight_dict:
+                                loss[k] *= self.criterion.weight_dict[k]
+                            else:
+                                # remove this loss if not specified in `weight_dict`
+                                loss.pop(k)
+                        loss_dict = loss.copy()
+                        loss = sum(loss_dict.values())
 
-                loss = self.criterion(outputs, targets)
                 loss.backward()
                 
                 # Gradient clipping if configured
@@ -1121,6 +1074,7 @@ class Trainer:
                 
                 # Update weights
                 self.optimizer.step()
+            
             
             # Update metrics
             loss_meter.update(loss.item(), inputs.size(0))
@@ -1263,20 +1217,59 @@ class Trainer:
                 else:  # Assume tuple (inputs, targets)
                     inputs, targets = batch
                     inputs = inputs.to(self.device)
-                    targets = targets.to(self.device)
+                    if not isinstance(targets, list):
+                        targets = targets.to(self.device)
                 
                 # Run forward pass
                 outputs = self.model(inputs)
-                outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
-
-                loss = self.criterion_eval(outputs, targets)
                 
+                if self.config.data.task_type == 'semantic_segmentation':
+                    outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
+                    loss = self.criterion_eval(outputs, targets)
+                elif self.config.data.task_type == 'instance_segmentation':
+                    loss = self.criterion(outputs, targets)
+                    if isinstance(loss, dict):
+                        for k in list(loss.keys()):
+                            if k in self.criterion.weight_dict:
+                                loss[k] *= self.criterion.weight_dict[k]
+                            else:
+                                # remove this loss if not specified in `weight_dict`
+                                loss.pop(k)
+                        loss_dict = loss.copy()
+                        loss = sum(loss_dict.values())
                 # Update metrics
                 loss_meter.update(loss.item(), inputs.size(0))
                 if torch.cuda.is_available():
                     cuda_mem.update(torch.cuda.max_memory_allocated(device=None) / (1024 * 1024 * 1024))
                 
                 # Update confusion matrix for IoU calculation
+                if isinstance(outputs, dict) and isinstance(targets, list):
+                    ## process mask2former head outputs and targets into [B, C, H, W] and [B, H, W]
+                    target_hw = targets[0]['masks'].shape[1:]
+                    mask_cls_results = outputs["pred_logits"]
+                    mask_pred_results = outputs["pred_masks"]
+                    # print("mask_cls_results:", mask_cls_results.shape)
+                    # print("mask_pred_results", mask_pred_results.shape)
+                    # print("target_hw: ", target_hw)
+                    # upsample masks
+                    mask_pred_results = F.interpolate(
+                        mask_pred_results,
+                        size=target_hw,
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+
+                    outputs = []
+                    for mask_cls_result, mask_pred_result in zip(mask_cls_results, mask_pred_results):
+                        # semantic segmentation inference
+                        if is_distributed():
+                            semmap = self.model.module.decoder.semantic_inference(mask_cls_result, mask_pred_result)
+                        else:
+                            semmap = self.model.decoder.semantic_inference(mask_cls_result, mask_pred_result)
+                        outputs.append(semmap)
+                    outputs = torch.stack(outputs)
+                    targets = self.val_loader.dataset.instances_to_semantic(targets=targets, ignore_index=self.config.data.ignore_index)
+                    
                 confusion_matrix.update(outputs, targets)
                 
                 # Update progress bar only on main process
