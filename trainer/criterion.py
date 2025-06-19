@@ -222,6 +222,8 @@ def dice_loss(
     """
     inputs = inputs.sigmoid()
     inputs = inputs.flatten(1)
+    # print(inputs.shape)
+    # print(targets.shape)
     numerator = 2 * (inputs * targets).sum(-1)
     denominator = inputs.sum(-1) + targets.sum(-1)
     loss = 1 - (numerator + 1) / (denominator + 1)
@@ -363,7 +365,8 @@ class SetCriterion(nn.Module):
                 point_coords,
                 align_corners=False,
             ).squeeze(1)
-
+        # print(target_masks.shape)
+        # print(src_masks.shape)
         point_logits = point_sample(
             src_masks,
             point_coords,
