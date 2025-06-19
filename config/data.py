@@ -83,8 +83,9 @@ class R2S100KConfig(DataConfig):
         
         elif self.task_type == "instance_segmentation":
             # Only classes that can form instances (exclude background)
-            return len([cls_name for cls_name in self._raw_class_names if cls_name != 'bg'])  # 14 classes
-        
+            # return len([cls_name for cls_name in self._raw_class_names if cls_name != 'bg'])  # 14 classes
+            return self._raw_num_classes  # All 15 classes
+
         elif self.task_type == "panoptic_segmentation":
             # For panoptic, we typically count only the "thing" classes for instance detection
             # "Stuff" classes are handled separately through semantic segmentation
@@ -102,8 +103,9 @@ class R2S100KConfig(DataConfig):
         
         elif self.task_type == "instance_segmentation":
             # Remove background, return detectable classes
-            return [cls for cls in self._raw_class_names if cls != 'bg']
-        
+            # return [cls for cls in self._raw_class_names if cls != 'bg']
+            return self._raw_class_names
+
         elif self.task_type == "panoptic_segmentation":
             # Return thing classes for instance detection
             raise NotImplementedError(f"No panoptic segmentation task in {self.dataset_name}")
@@ -118,7 +120,8 @@ class R2S100KConfig(DataConfig):
             return 0  # Ignore background in loss computation
         
         elif self.task_type == "instance_segmentation":
-            return 255  # No ignore index needed - background simply doesn't generate instances
+            # return 255  # No ignore index needed - background simply doesn't generate instances
+            return 0  
         
         elif self.task_type == "panoptic_segmentation":
            raise NotImplementedError(f"No panoptic segmentation task in {self.dataset_name}")
@@ -134,7 +137,8 @@ class R2S100KConfig(DataConfig):
         
         elif self.task_type == "instance_segmentation":
             # Return colors for detectable classes (excluding background)
-            return [color for i, color in enumerate(self._raw_label_colors_list) if i != 0]
+            # return [color for i, color in enumerate(self._raw_label_colors_list) if i != 0]
+            return self._raw_label_colors_list
         
         elif self.task_type == "panoptic_segmentation":
             # Return colors for thing classes

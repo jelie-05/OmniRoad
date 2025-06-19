@@ -16,7 +16,7 @@ JOB_NAME="mt-vfmseg"
 FREEZE=true  
 USE_AMP=false
 GRAD_CLIP=""
-
+LR="0.001"
 # Script paths
 PROJECT_DIR="/home/phd_li/git_repo/MT-DinoSeg"
 LOG_DIR="$PROJECT_DIR/logs"
@@ -72,6 +72,10 @@ while [[ $# -gt 0 ]]; do
             GRAD_CLIP="$2"
             shift 2
             ;;
+        --lr)
+            LR="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
@@ -89,6 +93,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-freeze        Don't freeze encoder weights (default)"
             echo "  --use-amp          Enable mixed precision training"
             echo "  --grad-clip VALUE  Gradient clipping value (e.g., 1.0)"
+            echo "  --lr               Learning Rate (default: $LR)"
             echo ""
             echo "  -h, --help         Show this help"
             exit 0
@@ -178,6 +183,7 @@ TRAIN_CMD="train.py \\\\
     --model_name ${MODEL} \\\\
     --epochs ${EPOCHS} \\\\
     --batch_size ${BATCH_SIZE} \\\\
+    --learning_rate ${LR} \\\\
     --num_workers ${NUM_WORKERS}"
 
 # Add optional flags

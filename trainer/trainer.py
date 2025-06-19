@@ -326,13 +326,26 @@ class Trainer:
                 else:  # Assume tuple (inputs, targets)
                     inputs, targets = batch
                     inputs = inputs.to(self.device)
-                    targets = targets.to(self.device)
+                    if not isinstance(targets, list):
+                        targets = targets.to(self.device)
                 
                 # Run forward pass
                 outputs = self.model(inputs)
-                outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
 
-                loss = self.criterion_eval(outputs, targets)
+                if self.config.data.task_type == 'semantic_segmentation':
+                    outputs = torch.nn.functional.interpolate(outputs, size=targets.shape[1:], mode="bilinear", align_corners=False)
+                    loss = self.criterion_eval(outputs, targets)
+                elif self.config.data.task_type == 'instance_segmentation':
+                    loss = self.criterion(outputs, targets)
+                    if isinstance(loss, dict):
+                        for k in list(loss.keys()):
+                            if k in self.criterion.weight_dict:
+                                loss[k] *= self.criterion.weight_dict[k]
+                            else:
+                                # remove this loss if not specified in `weight_dict`
+                                loss.pop(k)
+                        loss_dict = loss.copy()
+                        loss = sum(loss_dict.values())
                 
                 # Update metrics
                 loss_meter.update(loss.item(), inputs.size(0))
@@ -340,6 +353,30 @@ class Trainer:
                     cuda_mem.update(torch.cuda.max_memory_allocated(device=None) / (1024 * 1024 * 1024))
                 
                 # Update confusion matrix for IoU calculation
+                if isinstance(outputs, dict) and isinstance(targets, list):
+                    ## process mask2former head outputs and targets into [B, C, H, W] and [B, H, W]
+                    target_hw = targets[0]['masks'].shape[1:]
+                    mask_cls_results = outputs["pred_logits"]
+                    mask_pred_results = outputs["pred_masks"]
+                    # upsample masks
+                    mask_pred_results = F.interpolate(
+                        mask_pred_results,
+                        size=target_hw,
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+
+                    outputs = []
+                    for mask_cls_result, mask_pred_result in zip(mask_cls_results, mask_pred_results):
+                        # semantic segmentation inference
+                        if is_distributed():
+                            semmap = self.model.module.decoder.semantic_inference(mask_cls_result, mask_pred_result)
+                        else:
+                            semmap = self.model.decoder.semantic_inference(mask_cls_result, mask_pred_result)
+                        outputs.append(semmap)
+                    outputs = torch.stack(outputs)
+                    targets = self.test_loader.dataset.instances_to_semantic(targets=targets, ignore_index=self.config.data.ignore_index)
+                    
                 confusion_matrix.update(outputs, targets)
                 
                 # Store samples for visualization
@@ -1164,10 +1201,12 @@ class Trainer:
                 self.writer.add_scalar('Timing/batch_time_avg', all_batch_times.mean().item(), epoch)
                 self.writer.add_scalar('Timing/data_time_avg', all_data_times.mean().item(), epoch)
                 
-                # Log histograms for better visualization
-                self.writer.add_histogram('Distributions/loss_per_rank', all_avg_losses.cpu(), epoch)
-                self.writer.add_histogram('Distributions/memory_per_rank', all_cuda_mem.cpu(), epoch)
-                
+                try:
+                    # Log histograms for better visualization
+                    self.writer.add_histogram('Distributions/loss_per_rank', all_avg_losses.cpu(), epoch)
+                    self.writer.add_histogram('Distributions/memory_per_rank', all_cuda_mem.cpu(), epoch)
+                except Exception as e: 
+                    print(e)
                 return {'train_loss': global_loss}
             else:
                 return {'train_loss': loss_meter.avg}
@@ -1386,10 +1425,12 @@ class Trainer:
                     self.writer.add_scalar('Metrics/mean_iou_max', miou_tensor.max().item(), epoch)
                     
                     # Log histograms
-                    self.writer.add_histogram('Distributions/val_loss_per_rank', all_avg_losses.cpu(), epoch)
-                    self.writer.add_histogram('Distributions/val_miou_per_rank', miou_tensor, epoch)
-                    self.writer.add_histogram('Distributions/val_pixel_acc_per_rank', pixel_acc_tensor, epoch)
-                
+                    try:
+                        self.writer.add_histogram('Distributions/val_loss_per_rank', all_avg_losses.cpu(), epoch)
+                        self.writer.add_histogram('Distributions/val_miou_per_rank', miou_tensor, epoch)
+                        self.writer.add_histogram('Distributions/val_pixel_acc_per_rank', pixel_acc_tensor, epoch)
+                    except Exception as e: 
+                        print(e)
                 # Log global per-class IoU
                 class_names = self.config.data.class_names if hasattr(self.config.data, 'class_names') else None
                 for i, iou in enumerate(global_metrics['iou']):
