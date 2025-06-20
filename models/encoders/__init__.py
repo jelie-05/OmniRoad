@@ -9,7 +9,7 @@ from .dinov1_wrapper import DinoViTWrapper
 from .dinov2_wrapper import Dinov2ViTWrapper
 from .clip_wrapper import CLIPViTWrapper
 from .swinv2_wrapper import SwinTransformerWrapper
-
+from .vit_adapter import ViTAdapter
 # Registry of encoder implementations
 ENCODER_REGISTRY: Dict[str, Type[BaseEncoder]] = {
     'dino_vits8': DinoViTWrapper,
@@ -26,6 +26,7 @@ ENCODER_REGISTRY: Dict[str, Type[BaseEncoder]] = {
     'lora_swinv2_tiny_window8_256': SwinTransformerWrapper,
     'lora_swinv2_small_window8_256': SwinTransformerWrapper,
     'lora_swinv2_base_window8_256': SwinTransformerWrapper,
+    'vit_adapter_dinov2_vits14': ViTAdapter,
 }
 
 def create_encoder(config: EncoderConfig) -> BaseEncoder:
@@ -44,4 +45,4 @@ def create_encoder(config: EncoderConfig) -> BaseEncoder:
     
     return encoder_class(config)
 
-__all__ = ['BaseEncoder', 'DinoViTWrapper', 'Dinov2ViTWrapper', 'CLIPViTWrapper', 'SwinTransformerWrapper', 'create_encoder']
+__all__ = ['BaseEncoder', 'DinoViTWrapper', 'Dinov2ViTWrapper', 'CLIPViTWrapper', 'SwinTransformerWrapper', 'ViTAdapter', 'create_encoder']

@@ -98,6 +98,7 @@ class Mask2FormerHead(BaseDecoder):
             keys = list(self.config.input_shape.keys())
             for i in range(len(inputs)):
                 features[keys[i]] = inputs[i]
+                # print(f"{keys[i]}: {features[keys[i]].shape}")
             inputs = features
         mask_features, transformer_encoder_features, multi_scale_features = self.pixel_decoder.forward_features(features=inputs)
         if self.transformer_in_feature == "multi_scale_pixel_decoder":
