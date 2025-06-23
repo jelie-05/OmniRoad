@@ -27,6 +27,9 @@ ENCODER_REGISTRY: Dict[str, Type[BaseEncoder]] = {
     'lora_swinv2_small_window8_256': SwinTransformerWrapper,
     'lora_swinv2_base_window8_256': SwinTransformerWrapper,
     'vit_adapter_dinov2_vits14': ViTAdapter,
+    'vit_adapter_dinov2_vitb14': ViTAdapter,
+    'vit_adapter_lora_dinov2_vits14': ViTAdapter,
+    'vit_adapter_lora_dinov2_vitb14': ViTAdapter,
 }
 
 def create_encoder(config: EncoderConfig) -> BaseEncoder:

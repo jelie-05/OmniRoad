@@ -129,6 +129,11 @@ def main():
         # Load configuration
         config = load_config_for_testing(args)
         config.model.encoder.name = config.model.encoder.name.replace('lora_', '') if 'lora' in config.model.encoder.name else config.model.encoder.name
+
+        if hasattr(config.model.encoder, "lora_backbone"):
+            if config.model.encoder.lora_backbone:
+                print(f"Disable LoRA during inference...")
+                config.model.encoder.lora_backbone = False
         # Set random seeds for reproducibility
         init_seeds(config.seed, rank)
         

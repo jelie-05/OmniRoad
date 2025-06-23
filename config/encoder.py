@@ -153,4 +153,86 @@ class ViTAdapterDinov2ViTS14Config(EncoderConfig):
     use_cls: bool = True
     with_cp: bool = False
     drop_path_rate: float = 0.0
+
+@EncoderRegistry.register("vit_adapter_dinov2_vitb14")
+@dataclass
+class ViTAdapterDinov2ViTB14Config(EncoderConfig):
+    """Configuration for ViT-Adapter with DinoV2 ViTB14 model."""
+    name: str = "vit_adapter_dinov2_vitb14"
+    dinov2_type: str = "dinov2_vitb14"
+    lora_backbone: bool = False
+    freeze: bool = True
+
+    # lora_r: int = 16
+    # lora_alpha: int = 32
+    # lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    # lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
+    output_dim: List[int] = field(default_factory=lambda: [768, 768, 768, 768])
+    conv_inplane: int = 64
+    n_points: int = 4
+    deform_num_heads: int = 12
+    init_values: float = 0.0
+    interaction_indexes: List[List[int]] = field(default_factory=lambda: [[0, 2], [3, 5], [6, 8], [9, 11]])
+    with_cffn: bool = True
+    cffn_ratio: float = 0.25
+    add_vit_feature: bool = True
+    use_extra_extractor: bool = True
+    use_cls: bool = True
+    with_cp: bool = False
+    drop_path_rate: float = 0.0
+
+@EncoderRegistry.register("vit_adapter_lora_dinov2_vits14")
+@dataclass
+class ViTAdapterLoRADinov2ViTS14Config(EncoderConfig):
+    """Configuration for ViT-Adapter with LoRA DinoV2 ViTS14 model."""
+    name: str = "vit_adapter_lora_dinov2_vits14"
+    dinov2_type: str = "dinov2_vits14"
+    lora_backbone: bool = True
+    freeze: bool = True
+
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
     
+    output_dim: List[int] = field(default_factory=lambda: [384, 384, 384, 384])
+    conv_inplane: int = 64
+    n_points: int = 4
+    deform_num_heads: int = 6
+    init_values: float = 0.0
+    interaction_indexes: List[List[int]] = field(default_factory=lambda: [[0, 2], [3, 5], [6, 8], [9, 11]])
+    with_cffn: bool = True
+    cffn_ratio: float = 0.25
+    add_vit_feature: bool = True
+    use_extra_extractor: bool = True
+    use_cls: bool = True
+    with_cp: bool = False
+    drop_path_rate: float = 0.0
+
+@EncoderRegistry.register("vit_adapter_lora_dinov2_vitb14")
+@dataclass
+class ViTAdapterLoRADinov2ViTB14Config(EncoderConfig):
+    """Configuration for ViT-Adapter with LoRA DinoV2 ViTB14 model."""
+    name: str = "vit_adapter_lora_dinov2_vitb14"
+    dinov2_type: str = "dinov2_vitb14"
+    lora_backbone: bool = True
+    freeze: bool = True
+
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_target: List[str] = field(default_factory=lambda: ['qkv', 'proj'])
+    lora_qkv_enable: List[bool] = field(default_factory=lambda: [True, False, True])
+    
+    output_dim: List[int] = field(default_factory=lambda: [768, 768, 768, 768])
+    conv_inplane: int = 64
+    n_points: int = 4
+    deform_num_heads: int = 12
+    init_values: float = 0.0
+    interaction_indexes: List[List[int]] = field(default_factory=lambda: [[0, 2], [3, 5], [6, 8], [9, 11]])
+    with_cffn: bool = True
+    cffn_ratio: float = 0.25
+    add_vit_feature: bool = True
+    use_extra_extractor: bool = True
+    use_cls: bool = True
+    with_cp: bool = False
+    drop_path_rate: float = 0.0
