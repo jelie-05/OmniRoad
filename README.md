@@ -1,2 +1,1 @@
-# MT-VFMSeg
-Multi-task semantic segmentation using Vision Foundation Models (VFMs)
+# OmniRoad: Unified Multi-Scale Road Scene Perception
