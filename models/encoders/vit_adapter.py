@@ -17,33 +17,8 @@ from config.base import EncoderConfig
 from .base import BaseEncoder
 
 class ViTAdapter(BaseEncoder):
-    # def __init__(
-    #     self,
-    #     pretrain_size=224,
-    #     num_heads=12,
-    #     conv_inplane=64,
-    #     n_points=4,
-    #     deform_num_heads=6,
-    #     init_values=0.0,
-    #     interaction_indexes=None,
-    #     with_cffn=True,
-    #     cffn_ratio=0.25,
-    #     deform_ratio=1.0,
-    #     add_vit_feature=True,
-    #     pretrained=None,
-    #     use_extra_extractor=True,
-    #     freeze_vit=False,
-    #     use_cls=True,
-    #     with_cp=False,
-    #     *args,
-    #     **kwargs
-    # ):
-        # super().__init__(num_heads=num_heads, pretrained=pretrained, with_cp=with_cp, *args, **kwargs)
     def __init__(self, config: EncoderConfig):
         super().__init__(config)
-        # if freeze_vit:
-        #     for param in self.parameters():
-        #         param.requires_grad = False
         try:
             self.encoder = torch.hub.load('facebookresearch/dinov2', config.dinov2_type)
         except Exception as e:
@@ -62,7 +37,6 @@ class ViTAdapter(BaseEncoder):
         if not self.use_cls:
             self.encoder.cls_token = None
         self.num_block = len(self.encoder.blocks)
-        # self.pretrain_size = (config.pretrain_size, config.pretrain_size)
         self.interaction_indexes = config.interaction_indexes
         self.add_vit_feature = config.add_vit_feature
         embed_dim = self.encoder.embed_dim

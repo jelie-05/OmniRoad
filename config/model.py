@@ -375,11 +375,75 @@ class ViTAdapterDinov2ViTS14Mask2FormerHeadConfig(ModelConfig):
     )
     
     def __post_init__(self):
-        # Ensure decoder input_dim matches encoder output_dim
-        # self.decoder.in_channels = self.encoder.output_dim
-        # self.decoder.input_dim = self.encoder.output_dim
-        # self.decoder.encoder_name = self.encoder.name
+        channels_list = self.encoder.output_dim
 
+        self.decoder.input_shape = {
+            "res2": ShapeSpec(channels=channels_list[0], stride=4, height=self.input_size[0] // 4, width=self.input_size[1] // 4), 
+            "res3": ShapeSpec(channels=channels_list[1], stride=8, height=self.input_size[0] // 8, width=self.input_size[1] // 8),   
+            "res4": ShapeSpec(channels=channels_list[2], stride=16, height=self.input_size[0] // 16, width=self.input_size[1] // 16),  
+            "res5": ShapeSpec(channels=channels_list[3], stride=32, height=self.input_size[0] // 32, width=self.input_size[1] // 32),    
+        }
+        self.decoder.transformer_in_features = ["res2", "res3", "res4", "res5"]
+
+@ModelRegistry.register("vit_adapter_dinov2_vitb14-mask2former_head")
+@dataclass
+class ViTAdapterDinov2ViTB14Mask2FormerHeadConfig(ModelConfig):
+    name: str = 'vit_adapter_dinov2_vitb14-mask2former_head'
+    input_size: Tuple[int, int] = (224, 224)
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("vit_adapter_dinov2_vitb14")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("mask2former_head")()
+    )
+    
+    def __post_init__(self):
+        channels_list = self.encoder.output_dim
+
+        self.decoder.input_shape = {
+            "res2": ShapeSpec(channels=channels_list[0], stride=4, height=self.input_size[0] // 4, width=self.input_size[1] // 4), 
+            "res3": ShapeSpec(channels=channels_list[1], stride=8, height=self.input_size[0] // 8, width=self.input_size[1] // 8),   
+            "res4": ShapeSpec(channels=channels_list[2], stride=16, height=self.input_size[0] // 16, width=self.input_size[1] // 16),  
+            "res5": ShapeSpec(channels=channels_list[3], stride=32, height=self.input_size[0] // 32, width=self.input_size[1] // 32),    
+        }
+        self.decoder.transformer_in_features = ["res2", "res3", "res4", "res5"]
+
+@ModelRegistry.register("vit_adapter_lora_dinov2_vits14-mask2former_head")
+@dataclass
+class ViTAdapterLoRADinov2ViTS14Mask2FormerHeadConfig(ModelConfig):
+    name: str = 'vit_adapter_lora_dinov2_vits14-mask2former_head'
+    input_size: Tuple[int, int] = (224, 224)
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("vit_adapter_lora_dinov2_vits14")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("mask2former_head")()
+    )
+    
+    def __post_init__(self):
+        channels_list = self.encoder.output_dim
+
+        self.decoder.input_shape = {
+            "res2": ShapeSpec(channels=channels_list[0], stride=4, height=self.input_size[0] // 4, width=self.input_size[1] // 4), 
+            "res3": ShapeSpec(channels=channels_list[1], stride=8, height=self.input_size[0] // 8, width=self.input_size[1] // 8),   
+            "res4": ShapeSpec(channels=channels_list[2], stride=16, height=self.input_size[0] // 16, width=self.input_size[1] // 16),  
+            "res5": ShapeSpec(channels=channels_list[3], stride=32, height=self.input_size[0] // 32, width=self.input_size[1] // 32),    
+        }
+        self.decoder.transformer_in_features = ["res2", "res3", "res4", "res5"]
+
+@ModelRegistry.register("vit_adapter_lora_dinov2_vitb14-mask2former_head")
+@dataclass
+class ViTAdapterLoRADinov2ViTB14Mask2FormerHeadConfig(ModelConfig):
+    name: str = 'vit_adapter_lora_dinov2_vitb14-mask2former_head'
+    input_size: Tuple[int, int] = (224, 224)
+    encoder: EncoderConfig = field(
+        default_factory=lambda: EncoderRegistry.get("vit_adapter_lora_dinov2_vitb14")()
+    )
+    decoder: DecoderConfig = field(
+        default_factory=lambda: DecoderRegistry.get("mask2former_head")()
+    )
+    
+    def __post_init__(self):
         channels_list = self.encoder.output_dim
 
         self.decoder.input_shape = {
