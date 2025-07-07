@@ -50,3 +50,45 @@ class SegmentationR2S100k(Config):
             self.data.std = [0.26862954, 0.26130258, 0.27577711]
         
         
+@ExperimentRegistry.register("semseg_bdd100k")
+@dataclass
+class SemsegBDD100k(Config):
+    experiment_name: str = "semseg_bdd100k"
+    model_name: str = "custom_model"
+    model: ModelConfig = field(init=False)
+    # model: ModelConfig = None
+    training: TrainingConfig = field(
+        default_factory=lambda: TrainingConfig(
+            batch_size=16,
+            epochs=100,
+            use_amp=False,
+            grad_clip_val=1.0,
+            optimizer=OptimizerConfig(
+                name="adamw",
+                learning_rate=0.001,
+                weight_decay=0.01
+            ),
+            scheduler=SchedulerConfig(
+                name="cosine",
+                warmup_epochs=5
+            )
+        )
+    )
+    data: DataConfig = field(default_factory=lambda: DataRegistry.get("semseg_bdd100k")())
+    seed: int = 0
+
+    def __post_init__(self):
+        self.model = ModelRegistry.get(self.model_name)()
+        self.data.label_colors_list, self.data.class_names = self.data.parse_color_and_names()
+        self.data.num_classes = len(self.data.class_names)
+
+        if self.model.decoder.name == 'mask2former_head':
+            print("Mask2Former is used, changing to instance segmentation data format")
+            self.data.task_type = 'instance_segmentation'
+        
+        self.model.decoder.num_classes = self.data.num_classes
+        self.data.input_size = self.model.input_size
+        if 'clip' in self.model.name:
+            print("CLIP is used, changing to its default mean and std for image_transform")
+            self.data.mean = [0.48145466, 0.4578275, 0.40821073]
+            self.data.std = [0.26862954, 0.26130258, 0.27577711]
