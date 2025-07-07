@@ -142,7 +142,7 @@ cat > "$JOB_SCRIPT" << EOF
 #BSUB -e ${LOG_DIR}/${EXPERIMENT}_${MODEL}_%J.log
 #BSUB -n ${CORES}
 #BSUB -q ${QUEUE}
-#BSUB -gpu "num=${GPUS}"
+#BSUB -gpu "num=${GPUS}:j_exclusive=yes"
 #BSUB -R "select[type==X64LIN]"
 
 # Configuration
